@@ -1,0 +1,41 @@
+"""The screens of the app in navigation order. Each screen is built lazily on first visit."""
+from dataclasses import dataclass, field
+from typing import Callable, Optional
+
+from PySide6.QtWidgets import QVBoxLayout, QWidget
+
+from pulse_pc.ui.components import EmptyState, PageHeader
+from pulse_pc.ui.theme import tokens
+
+
+@dataclass(frozen=True)
+class Screen:
+    key: str
+    title: str
+    symbol: str
+    subtitle: str
+    keywords: tuple = ()
+    factory: Optional[Callable[[], QWidget]] = field(default=None, compare=False)
+
+
+def pending_screen(screen):
+    """Shown until a screen is ported (stage C). States plainly that nothing is here yet."""
+    page = QWidget()
+    column = QVBoxLayout(page)
+    column.setContentsMargins(tokens.SPACE_5, tokens.SPACE_2, tokens.SPACE_5, tokens.SPACE_5)
+    column.setSpacing(tokens.SPACE_5)
+    column.addWidget(PageHeader(screen.symbol, screen.title, screen.subtitle))
+    column.addWidget(EmptyState(screen.symbol, "Экран ещё переносится",
+                                "Эта часть новой версии пока не готова. Все функции доступны в текущей панели Pulse-PC."), 1)
+    return page
+
+
+SCREENS = (
+    Screen("dashboard", "Главная", "home", "Ваш компьютер под контролем.", ("dashboard", "система", "cpu", "ram")),
+    Screen("telegram", "Telegram Бот", "telegram", "Управление, мониторинг и настройки бота.", ("бот", "telegram")),
+    Screen("phone", "Телефон", "phone", "Подключение и управление мобильными устройствами.", ("android", "pulse mobile")),
+    Screen("apps", "Приложения", "apps", "Запуск и завершение настроенных программ.", ("программы",)),
+    Screen("console", "Консоль", "console", "Журнал событий и диагностика.", ("журнал", "логи")),
+    Screen("music", "Музыка", "music", "Плеер, библиотека и очередь.", ("плеер",)),
+    Screen("settings", "Настройки", "settings", "Параметры приложения.", ("параметры", "поддержка", "лицензия")),
+)
