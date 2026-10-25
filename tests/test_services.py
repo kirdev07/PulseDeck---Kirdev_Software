@@ -200,6 +200,24 @@ class TelegramServiceTests(ServiceTestCase):
         self.assertIn("Pulse PC на связи", self.api.sent[0]["text"])
         self.assertEqual((self.api.sent[1]["chat_id"], self.api.sent[1]["text"]), (str(ADMIN), "<b>Same panel</b>"))
 
+    def test_search_commands_and_links(self):
+        opened = []
+        with mock.patch("webbrowser.open", side_effect=opened.append):
+            self.telegram().start().result(5)
+            self.assertTrue(wait_for(lambda: self.telegram_status() == st.RUNNING))
+            # AuthMiddleware drops commands sent less than 0.5 s apart, so pace them.
+            for text in ("/stop", "/settings", "/s погода", "/s@pulse_test_bot кот", "? новости"):
+                self.api.message(ADMIN, text)
+                wait_for(lambda: False, 0.7)
+            self.api.message(ADMIN, "смотри https://example.org/a.")
+            self.api.updates[-1]["message"]["entities"] = [{"type": "url", "offset": 7, "length": 21}]
+            self.assertTrue(wait_for(lambda: len(opened) >= 4, 15))
+            time.sleep(1)   # make sure nothing else opens late
+        searches = [u for u in opened if "google.com/search" in u]
+        self.assertEqual(len(searches), 3, opened)                 # /stop and /settings are not searches
+        self.assertTrue(any("%D0%BF%D0%BE%D0%B3%D0%BE%D0%B4%D0%B0" in u for u in searches))
+        self.assertEqual([u for u in opened if "example.org" in u], ["https://example.org/a"])   # once, no dot
+
     def test_stranger_is_refused_and_counted(self):
         bot = self.telegram()
         bot.start().result(5)

@@ -2,7 +2,7 @@
 from importlib import metadata
 
 # Runtime dependencies from requirements*.txt (import name -> distribution name).
-DISTRIBUTIONS = ("PySide6", "aiogram", "aiohttp", "python-dotenv", "psutil", "PyAutoGUI", "pywin32", "mss",
+DISTRIBUTIONS = ("PySide6", "aiogram", "aiohttp", "python-dotenv", "psutil", "pywin32", "mss",
                  "pillow", "cryptography", "pycaw", "winrt-runtime", "winrt-Windows.Media.Control")
 
 

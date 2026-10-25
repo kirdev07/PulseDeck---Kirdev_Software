@@ -1,7 +1,7 @@
 from html import escape
 import logging
 import subprocess
-import pyautogui
+from modules import keys
 import urllib.parse
 import webbrowser
 from aiogram import Router, F
@@ -180,7 +180,7 @@ async def search_reply_handler(message: Message):
 @router.callback_query(F.data == "sys_close_active")
 async def callback_close_active(callback: CallbackQuery):
     try:
-        pyautogui.hotkey('alt', 'f4')
+        keys.hotkey('alt', 'f4')
         await callback.answer("Активное окно закрыто (Alt+F4)")
     except Exception as e:
         await callback.answer(f"Ошибка при закрытии окна: {e}", show_alert=True)
@@ -258,22 +258,17 @@ async def callback_screenshot_specific(callback: CallbackQuery):
     except Exception as e:
         await callback.message.answer(f"Ошибка при создании скриншота: {e}")
 
-# Поиск в браузере по умолчанию
-@router.message(F.text.startswith(("/search", "/s", "? ")))
+# Поиск в браузере по умолчанию: /search …, /s … или «? …». Другие команды на /s
+# (/stop, /settings, /status…) сюда не попадают.
+@router.message(Command("search", "s"))
+@router.message(F.text.startswith("? "))
 async def cmd_search(message: Message):
     try:
-        text = message.text
-        if text.startswith("/search"):
-            query = text[len("/search"):].strip()
-        elif text.startswith("/s"):
-            query = text[len("/s"):].strip()
-        elif text.startswith("? "):
-            query = text[len("? "):].strip()
-            
+        text = message.text or ""
+        query = text[2:].strip() if text.startswith("? ") else (text.split(maxsplit=1)[1:] or [""])[0].strip()
         if not query:
             await message.answer("Пожалуйста, укажите текст для поиска. Пример:\n/search погода на завтра\n? погода на завтра")
             return
-            
         url = "https://www.google.com/search?q=" + urllib.parse.quote(query)
         webbrowser.open(url)
         from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -285,22 +280,4 @@ async def cmd_search(message: Message):
         logger.error(f"Ошибка при поиске: {e}")
         await message.answer(f"Ошибка: {e}")
 
-# Открытие ссылок из сообщений
-@router.message(F.text & (F.text.contains("http://") | F.text.contains("https://")))
-async def handle_url_message(message: Message):
-    try:
-        import re
-        import webbrowser
-        urls = re.findall(r'(https?://[^\s]+)', message.text)
-        if urls:
-            valid_urls = [u for u in urls if u.lower().startswith(("http://", "https://"))]
-            for url in valid_urls:
-                webbrowser.open(url)
-            
-            if len(urls) == 1:
-                await message.answer(f"🌐 Ссылка открыта в браузере:\n{urls[0]}", disable_web_page_preview=True)
-            else:
-                await message.answer(f"🌐 Открыто ссылок: {len(urls)}")
-    except Exception as e:
-        logger.error(f"Ошибка при открытии ссылки: {e}")
-        await message.answer(f"Ошибка при открытии ссылки: {e}")
+# Ссылки из сообщений открывает modules/file_handlers.handle_url (по разметке Telegram).

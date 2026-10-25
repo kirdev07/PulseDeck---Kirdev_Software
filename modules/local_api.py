@@ -194,8 +194,8 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
         count = body.get("count", 1)
         if type(count) is not int or not 1 <= count <= 25:
             raise ValueError("Повторов должно быть от 1 до 25.")
-        import pyautogui
-        await asyncio.to_thread(pyautogui.press, key, presses=count, interval=0.02)
+        from modules import keys
+        await asyncio.to_thread(keys.press, key, count, 0.02)
         return web.json_response({"ok": True})
 
     @routes.post("/api/system/{action}")
@@ -488,8 +488,8 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
             keys = {"toggle": "playpause", "play": "playpause", "pause": "playpause", "next": "nexttrack", "prev": "prevtrack"}
             if cmd not in keys:
                 raise ValueError("Сейчас ничего не играет.")
-            import pyautogui
-            await asyncio.to_thread(pyautogui.press, keys[cmd])
+            from modules import keys as media_keys
+            await asyncio.to_thread(media_keys.press, keys[cmd])
         return web.json_response({"ok": True})
 
     # ---- Notifications for the phone ----

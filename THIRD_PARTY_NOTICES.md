@@ -11,7 +11,6 @@ Pulse-PC использует следующие библиотеки с отк�
 | aiohttp | 3.14.5 | Apache-2.0 AND MIT | https://github.com/aio-libs/aiohttp |
 | python-dotenv | 1.2.4 | BSD-3-Clause | https://github.com/theskumar/python-dotenv |
 | psutil | 7.2.2 | BSD-3-Clause | https://github.com/giampaolo/psutil |
-| PyAutoGUI | 0.9.54 | BSD | https://github.com/asweigart/pyautogui |
 | pywin32 | 312 | PSF | https://github.com/mhammond/pywin32 |
 | mss | 10.2.0 | MIT License | https://github.com/BoboTiG/python-mss |
 | pillow | 13.0.0 | MIT-CMU | https://pillow.readthedocs.io/en/stable/releasenotes/index.html |
