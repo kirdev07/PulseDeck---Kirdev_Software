@@ -15,7 +15,7 @@ class Screen:
     symbol: str
     subtitle: str
     keywords: tuple = ()
-    factory: Optional[Callable[[], QWidget]] = field(default=None, compare=False)
+    factory: Optional[Callable[[object], QWidget]] = field(default=None, compare=False)  # receives the AppContext
 
 
 def pending_screen(screen):
@@ -30,8 +30,17 @@ def pending_screen(screen):
     return page
 
 
+def _lazy(module):
+    """Import a screen module only when the screen is first opened."""
+    def factory(context):
+        from importlib import import_module
+        return import_module(f"pulse_pc.ui.screens.{module}").build(context)
+    return factory
+
+
 SCREENS = (
-    Screen("dashboard", "Главная", "home", "Ваш компьютер под контролем.", ("dashboard", "система", "cpu", "ram")),
+    Screen("dashboard", "Главная", "home", "Ваш компьютер под контролем.", ("dashboard", "система", "cpu", "ram"),
+           factory=_lazy("dashboard")),
     Screen("telegram", "Telegram Бот", "telegram", "Управление, мониторинг и настройки бота.", ("бот", "telegram")),
     Screen("phone", "Телефон", "phone", "Подключение и управление мобильными устройствами.", ("android", "pulse mobile")),
     Screen("apps", "Приложения", "apps", "Запуск и завершение настроенных программ.", ("программы",)),

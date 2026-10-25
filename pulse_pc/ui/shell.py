@@ -12,8 +12,11 @@ EDGE = 6  # px of the window border that resizes it
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, screens=SCREENS, *, animate=True):
+    def __init__(self, screens=SCREENS, *, context=None, animate=True):
         super().__init__()
+        self.context = context
+        if context is not None:
+            context.navigate = self.open
         self.screens = {screen.key: screen for screen in screens}
         self.pages = {}
         self.setWindowTitle(APP_NAME)
@@ -54,7 +57,7 @@ class MainWindow(QMainWindow):
             return
         page = self.pages.get(key)
         if page is None:
-            page = screen.factory() if screen.factory else pending_screen(screen)
+            page = screen.factory(self.context) if screen.factory else pending_screen(screen)
             self.pages[key] = page
             self.stack.addWidget(page)
         self.stack.show_page(page)

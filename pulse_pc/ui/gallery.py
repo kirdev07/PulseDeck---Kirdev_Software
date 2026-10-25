@@ -10,7 +10,7 @@ from pulse_pc.ui.screens.registry import SCREENS, Screen
 from pulse_pc.ui.theme import icon, icons, tokens
 
 
-def build():
+def build(_context=None):
     content = QWidget()
     column = QVBoxLayout(content)
     column.setContentsMargins(0, 0, 0, 0)

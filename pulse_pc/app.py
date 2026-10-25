@@ -32,11 +32,18 @@ def create_application(argv=None):
 def main(argv=None):
     argv = sys.argv if argv is None else argv
     app = create_application(argv)
+    from pulse_pc.core.context import AppContext
+    from pulse_pc.core.state import StateStore
+    from pulse_pc.services.system.metrics import MetricsService
+    from pulse_pc.ui.screens.registry import SCREENS
     from pulse_pc.ui.shell import MainWindow
+    context = AppContext(store=StateStore(), metrics=MetricsService())
+    screens = SCREENS
     if "--gallery" in argv:
         from pulse_pc.ui.gallery import SCREENS_WITH_GALLERY
-        window = MainWindow(SCREENS_WITH_GALLERY)
-    else:
-        window = MainWindow()
+        screens = SCREENS_WITH_GALLERY
+    window = MainWindow(screens, context=context)
+    context.metrics.start()
+    app.aboutToQuit.connect(context.metrics.stop)
     window.show()
     return app.exec()

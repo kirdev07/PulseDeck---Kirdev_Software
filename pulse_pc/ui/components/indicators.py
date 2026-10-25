@@ -177,7 +177,7 @@ class Sparkline(QWidget):
         if current:
             segments.append(current)
         gradient = QLinearGradient(0, 0, 0, h)
-        gradient.setColorAt(0, QColor(255, 255, 255, 40))
+        gradient.setColorAt(0, QColor(255, 255, 255, 22))
         gradient.setColorAt(1, QColor(255, 255, 255, 0))
         for points in segments:
             if len(points) < 2:
@@ -205,13 +205,16 @@ class StatTile(Card):
         glyph = QLabel()
         glyph.setPixmap(icon(symbol, tokens.TEXT_2).pixmap(QSize(18, 18), self.devicePixelRatioF()))
         head.addWidget(glyph)
-        head.addWidget(label(name, "overline"))
+        self.name = label(name, "overline")
+        head.addWidget(self.name)
         head.addStretch(1)
         self.body.addLayout(head)
         self.value = label(UNAVAILABLE, "unavailable")
         self.body.addWidget(self.value)
         self.detail = label("", "caption")
+        self.detail.setMinimumHeight(self.detail.fontMetrics().height())  # keep tiles aligned when empty
         self.body.addWidget(self.detail)
+        self.body.addStretch(1)
         self.bar = QProgressBar()
         self.bar.setRange(0, 1000)
         self.bar.setTextVisible(False)
@@ -221,6 +224,10 @@ class StatTile(Card):
         if self.chart:
             self.chart.setFixedHeight(32)
             self.body.addWidget(self.chart)
+        self.setAccessibleName(name)
+
+    def set_name(self, name):
+        self.name.setText(name)
         self.setAccessibleName(name)
 
     def set_value(self, value, detail="", fraction=None):
@@ -242,4 +249,3 @@ class StatTile(Card):
             if self.chart and isinstance(value, (int, float)):
                 self.chart.append(value)
         self.detail.setText(detail)
-        self.detail.setVisible(bool(detail))
