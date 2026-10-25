@@ -5,7 +5,8 @@ LAN peers only and a valid per-device token (pairing by code, revocable on the P
 Protocol: docs/PANEL_PROTOCOL.md.
 
 Server -> panel: hello, metrics (every METRICS_SECONDS), media (on change), error.
-Panel -> server: {"type": "command", "action": "toggle" | "next" | "prev"}, {"type": "ping"}.
+Panel -> server: {"type": "command", "action": "toggle" | "next" | "prev"}, {"type": "ping"},
+{"type": "subscribe", "metrics": false} (the panel runs in the background: send media only).
 """
 import asyncio
 import concurrent.futures
@@ -145,6 +146,7 @@ def add_display_route(app, current_player, control_player, workstation_locked):
         logger.info("Панель подключена: %s (%s)", (device or {}).get("name", "?"), request.remote)
         reader = MetricsReader()
         send_lock = asyncio.Lock()
+        wants = {"metrics": True}
 
         async def send(message):
             async with send_lock:
@@ -153,6 +155,9 @@ def add_display_route(app, current_player, control_player, workstation_locked):
 
         async def metrics_loop():
             while not ws.closed:
+                if not wants["metrics"]:            # panel in the background: no sampling at all
+                    await asyncio.sleep(METRICS_SECONDS)
+                    continue
                 try:
                     await send(await reader.read())
                 except (ConnectionError, RuntimeError):
@@ -201,6 +206,8 @@ def add_display_route(app, current_player, control_player, workstation_locked):
                 kind = data.get("type") if isinstance(data, dict) else None
                 if kind == "ping":
                     await send({"type": "pong"})
+                elif kind == "subscribe":
+                    wants["metrics"] = bool(data.get("metrics", True))
                 elif kind == "command":
                     action = data.get("action")
                     if action not in COMMANDS:      # only playback; nothing else can be run from the panel

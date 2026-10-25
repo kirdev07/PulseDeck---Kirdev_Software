@@ -87,9 +87,16 @@ class LocalApiService:
                                     f"Порт {data['port']} занят другой программой или запрещён системой.")
             return
         self._watch = asyncio.create_task(self._refresh_loop())
+        if self.server.runner_v1 and self.server.runner_v1.addresses:
+            from pulse_pc.services.local_api.usb import UsbBridge
+            self._usb = UsbBridge(self.server.runner_v1.addresses[0][1])
+            self._usb.start()
         await asyncio.to_thread(self._publish)
 
     async def _stop(self):
+        if getattr(self, "_usb", None):
+            await self._usb.stop()
+            self._usb = None
         if self._watch:
             self._watch.cancel()
             await asyncio.gather(self._watch, return_exceptions=True)

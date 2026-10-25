@@ -29,9 +29,11 @@ PulseDeck Panel — Android-приложение, превращающее те�
 
 ```json
 {"type": "metrics",
- "cpu": {"load": 24.0, "temp": null},
- "gpu": {"load": 38.0, "temp": null, "name": "Intel(R) UHD Graphics"},
+ "cpu": {"load": 24.0, "temp": null, "name": "13th Gen Intel(R) Core(TM) i5-13420H", "cores": 12},
+ "gpu": {"load": 38.0, "temp": null, "name": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
+         "memory_total": 6442450944, "memory_used": 812000000},
  "ram": {"percent": 46.0, "used": 7900000000, "total": 17000000000},
+ "net": {"down": 1250000, "up": 98000},
  "disks": [{"name": "C:", "label": "Windows", "total": 512000000000, "free": 312000000000}]}
 ```
 
@@ -62,9 +64,20 @@ Windows не даёт их без сторонних драйверов. Дис�
 ```json
 {"type": "command", "action": "toggle"}   // toggle | next | prev — больше ничего
 {"type": "ping"}
+{"type": "subscribe", "metrics": false}   // приложение ушло в фон: только трек, без метрик
 ```
 
 Любые другие команды отклоняются. Пока ПК заблокирован, показатели и трек передаются, команды — нет.
+
+Видеокарта — с наибольшим объёмом памяти (в ноутбуке — дискретная); `load` — самый загруженный
+движок среди всех видеокарт, как в «Диспетчере задач». `net` — байт/с по всем сетевым адаптерам.
+
+## Подключение по USB
+
+* **adb reverse** (на телефоне включена отладка по USB, на ПК есть Android platform-tools): PulseDeck
+  сам выполняет `adb reverse tcp:8767 tcp:8767`, телефон подключается к `wss://127.0.0.1:8767`.
+  Тот же TLS, отпечаток и ключ устройства.
+* **USB-модем**: телефон и ПК получают общую частную сеть по кабелю; обычный поиск по UDP находит ПК.
 
 ## Версии
 
