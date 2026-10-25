@@ -242,7 +242,9 @@ class TelegramScreen(QWidget):
     def _show(self, value):
         text, dot = STATUS.get(value.status, STATUS[st.UNKNOWN])
         self.status.set(text, dot)
-        if value.status == st.RUNNING:
+        if value.status == st.RUNNING and value.error:      # setup mode: running, but no administrator yet
+            detail = value.error
+        elif value.status == st.RUNNING:
             detail = f"@{value.bot_name} принимает команды администратора." if value.bot_name else "Принимает команды."
         elif value.error:
             detail = value.error

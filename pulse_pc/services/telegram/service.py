@@ -113,8 +113,9 @@ class TelegramService:
         config.ADMIN_ID = admin     # AuthMiddleware reads it from the config module
         if not token or token == "your_telegram_bot_token_here":
             raise FatalTelegramError("Токен бота не настроен. Укажите его в Настройках.")
-        if not admin:
-            raise FatalTelegramError("Не указан ID администратора. Без него бот никого не пустит.")
+        # Without an administrator the bot runs in setup mode: AuthMiddleware answers every
+        # message with the sender's ID and runs no command, so the owner can learn their ID.
+        self.setup_mode = not admin
         try:
             session = AiohttpSession(timeout=REQUEST_TIMEOUT)
             if self.api_base:
@@ -142,7 +143,10 @@ class TelegramService:
 
             me = await self._connect(bot)
             self._post(bot_name=me.username or "", bot_title=me.full_name)
-            await self._startup_messages(bot, admin)
+            if admin:
+                await self._startup_messages(bot, admin)
+            else:
+                logger.warning("ID администратора не задан: бот только сообщает ID написавшим и не выполняет команды.")
             from modules.monitor import lock_monitor
             monitor_task = asyncio.create_task(lock_monitor(bot))
             self.runtime.notifier.bot = bot
@@ -213,7 +217,8 @@ class TelegramService:
             self._post(status=st.RECONNECTING, error="Нет связи с Telegram. Переподключение…")
             raise
         if self.store.state.telegram.status != st.RUNNING:
-            self._post(status=st.RUNNING, error="", since=time.time())
+            self._post(status=st.RUNNING, since=time.time(),
+                       error=SETUP_HINT if getattr(self, "setup_mode", False) else "")
         return result
 
     def _cancel_self(self, reason):
@@ -238,6 +243,8 @@ class TelegramService:
         return True
 
 
+SETUP_HINT = ("Режим настройки: ID администратора не задан. Напишите боту /start — он ответит вашим ID; "
+              "укажите его в Настройках. Команды пока не выполняются.")
 _UNAUTHORIZED = "Telegram отклонил токен: он неверный или был отозван в @BotFather."
 _CONFLICT = ("Этот бот уже получает обновления в другом месте: запущена вторая копия Pulse-PC "
              "или настроен webhook. Остановите другую копию и запустите бота снова.")

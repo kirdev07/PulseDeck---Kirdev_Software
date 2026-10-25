@@ -248,8 +248,16 @@ class TelegramServiceTests(ServiceTestCase):
         self.telegram(token="your_telegram_bot_token_here").start().result(5)
         self.assertTrue(wait_for(lambda: self.telegram_status() == st.ERROR))
         self.assertIn("Токен", self.store.state.telegram.error)
+
+    def test_setup_mode_tells_the_id_and_runs_nothing(self):
         self.telegram(admin=None).start().result(5)
-        self.assertTrue(wait_for(lambda: "администратора" in self.store.state.telegram.error))
+        self.assertTrue(wait_for(lambda: self.telegram_status() == st.RUNNING))
+        self.assertIn("Режим настройки", self.store.state.telegram.error)
+        self.api.message(STRANGER, "/status")
+        self.assertTrue(wait_for(lambda: any(m["chat_id"] == str(STRANGER) for m in self.api.sent)))
+        reply = next(m for m in self.api.sent if m["chat_id"] == str(STRANGER))
+        self.assertIn(str(STRANGER), reply["text"])            # the sender learns their ID
+        self.assertNotIn("Процессор", reply["text"])          # and nothing is executed
 
     def test_unreachable_server_means_reconnecting(self):
         service = TelegramService(self.runtime, self.store, api_base="http://127.0.0.1:9",
