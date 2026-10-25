@@ -4,7 +4,9 @@ import time
 
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
 from PySide6.QtGui import QColor, QDesktopServices, QTextCharFormat, QTextCursor
-from PySide6.QtWidgets import QGridLayout, QHBoxLayout, QLabel, QPlainTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (
+    QFileDialog, QGridLayout, QHBoxLayout, QLabel, QPlainTextEdit, QProgressBar, QVBoxLayout, QWidget,
+)
 
 from pulse_pc.core import settings as cfg
 from pulse_pc.core import state as st
@@ -49,7 +51,12 @@ class TelegramScreen(QWidget):
         for tile in (self.updates_tile, self.denied_tile, self.failures_tile, self.uptime_tile):
             tiles.addWidget(tile, 1)
         grid.addLayout(tiles, 1, 0)
-        grid.addWidget(self._control_card(), 1, 1, 2, 1)
+        side = QVBoxLayout()
+        side.setSpacing(tokens.SPACE_4)
+        side.addWidget(self._control_card())
+        side.addWidget(self._send_card())
+        side.addStretch(1)
+        grid.addLayout(side, 1, 1, 2, 1)
         grid.addWidget(self._log_card(), 2, 0)
         grid.setRowStretch(2, 1)
         column.addLayout(grid, 1)
@@ -131,6 +138,88 @@ class TelegramScreen(QWidget):
         card.body.addWidget(button("Токен и ID администратора", self.open_settings, "ghost", "chevron"))
         card.body.addStretch(1)
         return card
+
+    def _send_card(self):
+        card = Card("Отправить файлы в Telegram")
+        card.body.addWidget(label("Файлы до 50 МБ уходят в ваш чат с ботом. Работает, даже когда бот остановлен.",
+                                  "caption", wrap=True))
+        row = QHBoxLayout()
+        self.send_button = button("Выбрать файлы…", self.choose_files, symbol="folder")
+        self.cancel_send = button("Отменить", self.cancel_sending, "ghost")
+        self.cancel_send.hide()
+        row.addWidget(self.send_button)
+        row.addWidget(self.cancel_send)
+        row.addStretch(1)
+        card.body.addLayout(row)
+        self.send_bar = QProgressBar()
+        self.send_bar.setRange(0, 1000)
+        self.send_bar.setTextVisible(False)
+        self.send_bar.hide()
+        card.body.addWidget(self.send_bar)
+        self.send_status = label("", "caption", wrap=True)
+        self.send_status.hide()
+        card.body.addWidget(self.send_status)
+        self.sender = None
+        runtime = getattr(self.services, "runtime", None)
+        if runtime is not None:
+            from pulse_pc.services.telegram.file_sender import FileSender
+            self.sender = FileSender(runtime, self)
+            self.sender.progress.connect(self._send_progress)
+            self.sender.finished.connect(self._send_finished)
+        else:
+            self.send_button.setEnabled(False)
+        return card
+
+    def choose_files(self):
+        paths, _ = QFileDialog.getOpenFileNames(self, "Отправить файлы в Telegram")
+        if paths:
+            self.send_files(paths)
+
+    def send_files(self, paths):
+        from pulse_pc.core.secrets import load_token
+        admin = cfg.read_env(f"{self.config_dir}/.env").get("ADMIN_ID", "")
+        try:
+            self.sender.send(load_token(self.config_dir), admin, paths)
+        except (ValueError, RuntimeError) as exc:
+            self._show_send(str(exc))
+            return
+        self.send_button.setEnabled(False)
+        self.cancel_send.show()
+        self.cancel_send.setEnabled(True)
+        self.send_bar.setValue(0)
+        self.send_bar.show()
+        self._show_send(f"Файлов: {len(paths)}. Подготовка…")
+
+    def cancel_sending(self):
+        if self.sender:
+            self.cancel_send.setEnabled(False)
+            self._show_send("Отмена отправки…")
+            self.sender.cancel()
+
+    def _send_progress(self, state):
+        from pulse_pc.services.system.metrics import format_bytes
+        from pulse_pc.services.telegram.file_sender import PHASES
+        total = state.get("total_size") or 0
+        self.send_bar.setValue(round(1000 * state.get("total_transferred", 0) / total) if total else 0)
+        lines = [f"Отправлено {state.get('completed', 0)} из {state.get('total', 0)} · "
+                 f"{format_bytes(state.get('total_transferred', 0))} из {format_bytes(total)}"]
+        if state.get("speed"):
+            lines[0] += f" · {format_bytes(state['speed'], True)}"
+        for item in state.get("active", []):
+            lines.append(f"{item['name']}: {format_bytes(item['transferred'])} / {format_bytes(item['size'])}")
+        lines.append(PHASES.get(state.get("phase"), ""))
+        self._show_send("\n".join(line for line in lines if line))
+
+    def _send_finished(self, ok, text):
+        self.send_button.setEnabled(True)
+        self.cancel_send.hide()
+        if ok:
+            self.send_bar.setValue(1000)
+        self._show_send(text)
+
+    def _show_send(self, text):
+        self.send_status.setText(text)
+        self.send_status.setVisible(bool(text))
 
     def _log_card(self):
         card = Card("Журнал бота")

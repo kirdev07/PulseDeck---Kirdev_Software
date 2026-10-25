@@ -53,6 +53,7 @@ class FakeBotApi:
     def __init__(self):
         self.updates = []
         self.sent = []
+        self.documents = []
         self.mode = "ok"            # ok | conflict | unauthorized
         self.polls = 0
         self._next_id = 1
@@ -92,7 +93,10 @@ class FakeBotApi:
         if request.content_type.startswith("multipart"):
             data = {}
             async for part in await request.multipart():
-                data[part.name] = await part.text()
+                raw = await part.read()
+                data[part.name] = raw.decode("utf-8", "replace") if not part.filename else raw
+                if part.filename:
+                    data["filename"] = part.filename
         else:
             data = dict(await request.post())
         if self.mode == "unauthorized":
@@ -110,6 +114,12 @@ class FakeBotApi:
             if not pending:
                 await asyncio.sleep(0.2)
             return web.json_response({"ok": True, "result": pending})
+        if method == "senddocument":
+            self.documents.append(data)
+            return web.json_response({"ok": True, "result": {
+                "message_id": 900 + len(self.documents), "date": int(time.time()),
+                "chat": {"id": int(data["chat_id"]), "type": "private"},
+                "document": {"file_id": "f", "file_unique_id": "u", "file_name": data.get("filename", "")}}})
         if method == "sendmessage":
             self.sent.append(data)
             return web.json_response({"ok": True, "result": {
@@ -282,6 +292,52 @@ class IndependenceTests(ServiceTestCase):
         self.assertTrue(wait_for(lambda: self.store.state.phone.status == st.STOPPED))
         self.assertFalse(phone.running)
         self.assertIn("выключен", self.store.state.phone.error)
+
+
+class FileSenderTests(ServiceTestCase):
+    def bot_factory(self):
+        """aiogram.Bot that talks to the fake API (send_files_with_token builds its own Bot)."""
+        import aiogram
+        from aiogram.client.session.aiohttp import AiohttpSession
+        from aiogram.client.telegram import TelegramAPIServer
+        real = aiogram.Bot
+        base = self.api.base
+        return lambda token, **kw: real(token, session=AiohttpSession(api=TelegramAPIServer.from_base(base)))
+
+    def test_files_reach_the_admin_chat_with_progress(self):
+        from pulse_pc.services.telegram.file_sender import FileSender
+        root = Path(self.dir.name)
+        files = []
+        for name, size in (("a.txt", 300_000), ("b.bin", 70_000)):
+            (root / name).write_bytes(os.urandom(size))
+            files.append(str(root / name))
+        sender = FileSender(self.runtime)
+        progress, done = [], []
+        sender.progress.connect(progress.append)
+        sender.finished.connect(lambda ok, text: done.append((ok, text)))
+        with mock.patch("aiogram.Bot", self.bot_factory()),                 mock.patch("modules.transfer_history.record_transfer"):
+            sender.send(TOKEN, ADMIN, files)
+            self.assertTrue(wait_for(lambda: bool(done), 20))
+        self.assertEqual(done[0], (True, "Отправлено файлов: 2 из 2."))
+        self.assertEqual(sorted(d["filename"] for d in self.api.documents), ["a.txt", "b.bin"])
+        self.assertTrue(all(d["chat_id"] == str(ADMIN) for d in self.api.documents))
+        self.assertEqual(progress[-1]["phase"], "completed")
+        self.assertEqual(progress[-1]["total_transferred"], 370_000)
+
+    def test_validation_errors_are_reported(self):
+        from pulse_pc.services.telegram.file_sender import FileSender
+        sender = FileSender(self.runtime)
+        with self.assertRaises(ValueError):
+            sender.send("", ADMIN, ["x"])
+        with self.assertRaises(ValueError):
+            sender.send(TOKEN, "", ["x"])
+        done = []
+        sender.finished.connect(lambda ok, text: done.append((ok, text)))
+        with mock.patch("modules.transfer_history.record_transfer"):
+            sender.send(TOKEN, ADMIN, [str(Path(self.dir.name) / "missing.txt")])
+            self.assertTrue(wait_for(lambda: bool(done)))
+        self.assertFalse(done[0][0])
+        self.assertIn("не найден", done[0][1])
 
 
 if __name__ == "__main__":

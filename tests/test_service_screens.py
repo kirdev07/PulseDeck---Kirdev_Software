@@ -88,6 +88,19 @@ class TelegramScreenTests(ScreenTestCase):
         self.screen.toggle()
         self.assertEqual(self.services.telegram.calls, ["stop", "start"])
 
+    def test_send_card_needs_the_runtime(self):
+        self.assertFalse(self.screen.send_button.isEnabled())      # FakeServices has no runtime
+        self.assertTrue(self.screen.send_bar.isHidden())
+
+    def test_send_progress_text(self):
+        self.screen.send_bar.show()
+        self.screen._send_progress({"phase": "uploading", "total": 2, "completed": 1, "total_size": 2048,
+                                    "total_transferred": 1024, "speed": 512.0,
+                                    "active": [{"name": "b.bin", "transferred": 0, "size": 1024}]})
+        self.assertEqual(self.screen.send_bar.value(), 500)
+        self.assertIn("Отправлено 1 из 2", self.screen.send_status.text())
+        self.assertIn("b.bin", self.screen.send_status.text())
+
     def test_only_telegram_entries_in_its_log(self):
         self.book.add("Бот запущен", source="telegram")
         self.book.add("Порт занят", "ERROR", "phone")
