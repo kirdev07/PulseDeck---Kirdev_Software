@@ -49,10 +49,14 @@ def json_error(status, text):
 
 
 def is_private_ip(ip):
+    """LAN, loopback or link-local address; IPv4 written as IPv6 (::ffff:a.b.c.d) counts as IPv4."""
     try:
-        return ipaddress.ip_address(ip).is_private
+        address = ipaddress.ip_address((ip or "").split("%", 1)[0])
     except ValueError:
         return False
+    if getattr(address, "ipv4_mapped", None):
+        address = address.ipv4_mapped
+    return address.is_private or address.is_loopback or address.is_link_local
 
 
 def ask_owner(text):
@@ -73,6 +77,11 @@ def make_app(features_getter=lambda: None):
 
     @web.middleware
     async def guard(request, handler):
+        # The server is for the home network only: refuse every request from outside it,
+        # even with a valid token (e.g. after a port was forwarded on the router).
+        if not is_private_ip(request.remote or ""):
+            logger.warning("Отклонён запрос не из локальной сети: %s %s", request.remote, request.path)
+            return json_error(403, "Pulse-PC принимает запросы только из локальной сети.")
         if request.path not in ("/api/ping", "/api/pair"):
             given = request.headers.get("Authorization", "")
             device = await asyncio.to_thread(mobile_access.authenticate, given[7:] if given.startswith("Bearer ") else "")
