@@ -1,20 +1,23 @@
 """«Запускать вместе с Windows»: the HKCU Run entry.
 
-Installed build: runs Pulse-PC.exe --minimized. Source checkout: uses the launcher's
-command (PulsePC.pyw, which repairs the Python environment before starting)."""
+Installed build: runs Pulse-PC.exe --minimized. Source checkout: pythonw + PulsePC.pyw,
+which finds the project's .venv by itself."""
 import sys
 import winreg
+from pathlib import Path
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 NAME = "PulsePC"
 NAMES = (NAME, "PulsePC_Bot")   # PulsePC_Bot: entry of very old versions
+ROOT = Path(__file__).resolve().parents[3]
 
 
 def command():
     if getattr(sys, "frozen", False):
         return f'"{sys.executable}" --minimized'
-    import launcher
-    return launcher.launcher_command("--minimized")[0]
+    pythonw = Path(sys.executable).with_name("pythonw.exe")
+    interpreter = pythonw if pythonw.exists() else Path(sys.executable)
+    return f'"{interpreter}" "{ROOT / "PulsePC.pyw"}" --minimized'
 
 
 def is_enabled():
