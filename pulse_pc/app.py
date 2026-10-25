@@ -56,6 +56,15 @@ def main(argv=None):
 
     logbook = Logbook(config_dir / "logs")
     logbook.install()
+    from pulse_pc.core import secrets
+    try:
+        if secrets.migrate_token(config_dir):
+            logbook.add("Токен бота перенесён из config/.env в зашифрованное хранилище Windows.")
+    except Exception as exc:  # noqa: BLE001 - keep the old storage rather than lose the token
+        logbook.add(f"Не удалось зашифровать токен бота, он остаётся в config/.env: {exc}", "WARN")
+    token = secrets.load_token(config_dir)
+    if token:
+        logbook.secrets.extend((token, token.split(":", 1)[-1]))
     store = StateStore()
     services = ServiceManager(store, config_dir)
     context = AppContext(store=store, logbook=logbook, metrics=MetricsService(), player=MusicPlayer(app),

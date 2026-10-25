@@ -24,8 +24,15 @@ if not os.path.exists(env_path):
 
 load_dotenv(dotenv_path=env_path, override=True)
 
-# Токен бота
+# Токен бота. Новая панель хранит его зашифрованным (config/secrets.bin, DPAPI);
+# в .env тогда остаётся заглушка.
 BOT_TOKEN = os.getenv("BOT_TOKEN", "your_telegram_bot_token_here")
+if not BOT_TOKEN.strip() or BOT_TOKEN == "your_telegram_bot_token_here":
+    try:
+        from pulse_pc.core.secrets import SecretStore
+        BOT_TOKEN = SecretStore(CONFIG_DIR).get("BOT_TOKEN") or "your_telegram_bot_token_here"
+    except Exception:  # noqa: BLE001 - no store or cannot decrypt: behave as «not set»
+        BOT_TOKEN = "your_telegram_bot_token_here"
 
 # ID администратора (один человек)
 ADMIN_ID_RAW = os.getenv("ADMIN_ID", "")

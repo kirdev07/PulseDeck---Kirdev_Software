@@ -61,8 +61,9 @@ def check_programs(path):
 
 
 def check_telegram_settings(env_path):
+    from pulse_pc.core.secrets import load_token
     values = _dotenv(env_path)
-    token = values.get("BOT_TOKEN", "")
+    token = load_token(Path(env_path).parent)
     admin = values.get("ADMIN_ID", "")
     problems = []
     if not token or token == "your_telegram_bot_token_here":

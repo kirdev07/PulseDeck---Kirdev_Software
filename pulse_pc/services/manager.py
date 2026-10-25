@@ -53,9 +53,8 @@ class ServiceManager:
         self.local_api = LocalApiService(self.runtime, store)
 
     def telegram_configured(self):
-        values = cfg.read_env(self.config_dir / ".env")
-        token = values.get("BOT_TOKEN", "")
-        return bool(token and token != cfg.PLACEHOLDER_TOKEN and values.get("ADMIN_ID", "").isdigit())
+        from pulse_pc.core.secrets import load_token
+        return bool(load_token(self.config_dir)) and cfg.read_env(self.config_dir / ".env").get("ADMIN_ID", "").isdigit()
 
     def start(self, telegram=True):
         """Phone server always (if enabled in settings); Telegram when configured and wanted."""

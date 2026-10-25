@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 import config
 from modules import mobile_access
 from pulse_pc import APP_NAME, __version__
+from pulse_pc.core import secrets
 from pulse_pc.core import settings as cfg
 from pulse_pc.services.system import autostart, components
 from pulse_pc.ui.components import Card, PageHeader, StatusLine, Toggle, button, divider, label
@@ -171,8 +172,8 @@ class SettingsScreen(QWidget):
         card.body.addWidget(self.telegram_message)
         layout.addWidget(card)
         note = Card()
-        note.body.addWidget(label("Токен пока хранится в config/.env в открытом виде, как в предыдущей версии. "
-                                  "Защищённое хранение появится на этапе безопасности.", "caption", wrap=True))
+        note.body.addWidget(label("Токен шифруется средствами Windows (DPAPI) и хранится в config/secrets.bin. "
+                                  "Расшифровать его может только ваша учётная запись на этом ПК.", "caption", wrap=True))
         layout.addWidget(note)
         self.prober = TokenProbe(self)
         self.prober.finished.connect(self._probe_done)
@@ -301,10 +302,8 @@ class SettingsScreen(QWidget):
         self.general_message.setText("Анимации " + ("включены." if on else "выключены."))
 
     def load_telegram(self):
-        values = cfg.read_env(self.env_path)
-        token = values.get("BOT_TOKEN", "")
-        self.token.setText("" if token == cfg.PLACEHOLDER_TOKEN else token)
-        self.admin.setText(values.get("ADMIN_ID", ""))
+        self.token.setText(secrets.load_token(self.config_dir))
+        self.admin.setText(cfg.read_env(self.env_path).get("ADMIN_ID", ""))
 
     def _toggle_token(self):
         hidden = self.token.echoMode() == QLineEdit.EchoMode.Password
@@ -318,8 +317,9 @@ class SettingsScreen(QWidget):
             self.telegram_message.setText(" ".join(problems))
             return False
         try:
-            cfg.write_env(self.env_path, {"BOT_TOKEN": token or cfg.PLACEHOLDER_TOKEN, "ADMIN_ID": admin})
-        except OSError as exc:
+            secrets.save_token(self.config_dir, token)       # encrypted; .env keeps a placeholder
+            cfg.write_env(self.env_path, {"ADMIN_ID": admin})
+        except (OSError, secrets.SecretError) as exc:
             self.telegram_message.setText(f"Не удалось сохранить: {exc}")
             return False
         book = getattr(self.context, "logbook", None)
@@ -358,15 +358,16 @@ class SettingsScreen(QWidget):
             widget = self.security_lines.takeAt(0).widget()
             if widget:
                 widget.deleteLater()
-        values = cfg.read_env(self.env_path)
-        token = values.get("BOT_TOKEN", "")
-        admin = values.get("ADMIN_ID", "")
+        token = secrets.load_token(self.config_dir)
+        encrypted = bool(token) and token == _stored(self.config_dir)
+        admin = cfg.read_env(self.env_path).get("ADMIN_ID", "")
         data = mobile_access.load()
         checks = [
             ("ok" if admin.isdigit() else "error",
              "Доступ к боту ограничен вашим Telegram ID" if admin.isdigit() else "ID администратора не задан"),
-            ("off" if token and token != cfg.PLACEHOLDER_TOKEN else "ok",
-             "Токен бота хранится в config/.env без шифрования" if token and token != cfg.PLACEHOLDER_TOKEN
+            ("ok" if encrypted or not token else "off",
+             "Токен бота зашифрован средствами Windows для вашей учётной записи" if encrypted
+             else "Токен бота хранится в config/.env без шифрования" if token
              else "Токен бота не сохранён на этом ПК"),
             ("off" if data["enabled"] else "ok",
              "Связь с телефоном по локальной сети не шифруется (HTTP)" if data["enabled"]
@@ -382,6 +383,13 @@ class SettingsScreen(QWidget):
             self.security_lines.addWidget(line)
         legend = label("● в порядке   ○ требует внимания   ⊗ проблема", "caption")
         self.security_lines.addWidget(legend)
+
+
+def _stored(config_dir):
+    try:
+        return secrets.SecretStore(config_dir).get("BOT_TOKEN")
+    except secrets.SecretError:
+        return ""
 
 
 def _python():

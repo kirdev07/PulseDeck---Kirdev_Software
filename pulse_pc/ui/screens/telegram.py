@@ -175,7 +175,8 @@ class TelegramScreen(QWidget):
         self.chat_button.setEnabled(bool(value.bot_name))
         values = cfg.read_env(f"{self.config_dir}/.env")
         self.info["admin"].setText(values.get("ADMIN_ID") or "не задан")
-        self.info["token"].setText(cfg.mask(values.get("BOT_TOKEN", "")) or "не задан")
+        from pulse_pc.core.secrets import load_token
+        self.info["token"].setText(cfg.mask(load_token(self.config_dir)) or "не задан")
         self._tick()
 
     def _tick(self):
