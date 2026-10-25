@@ -68,8 +68,11 @@ def ask_owner(text):
         0, text, "Pulse PC — новое устройство", MB_YESNO | MB_ICONQUESTION | MB_SETFOREGROUND | MB_TOPMOST) == IDYES
 
 
-def make_app(features_getter=lambda: None):
+def make_app(features_getter=lambda: None, version=0, pairing=None):
+    """version 0: the original HTTP API (/api/...). version 1: the same handlers under
+    /api/v1/... for the TLS server, with code-based pairing and /api/v1/info."""
     from modules.monitor import workstation_locked
+    pairing = pairing or mobile_access.PAIRING
     pairing_lock = asyncio.Lock()
     pairing_attempts = {}
     PAIR_WINDOW_SECONDS = 60
@@ -82,13 +85,16 @@ def make_app(features_getter=lambda: None):
         if not is_private_ip(request.remote or ""):
             logger.warning("Отклонён запрос не из локальной сети: %s %s", request.remote, request.path)
             return json_error(403, "Pulse-PC принимает запросы только из локальной сети.")
-        if request.path not in ("/api/ping", "/api/pair"):
+        path = request.path
+        if version == 1 and path.startswith("/api/v1/"):
+            path = "/api/" + path[len("/api/v1/"):]       # same rules for both versions
+        if path not in ("/api/ping", "/api/pair", "/api/info"):
             given = request.headers.get("Authorization", "")
             device = await asyncio.to_thread(mobile_access.authenticate, given[7:] if given.startswith("Bearer ") else "")
             if not device:
                 return json_error(401, "Устройство не подключено или отозвано.")
             # Same rule as the Telegram bot: no control while the PC is locked.
-            if request.path not in READ_WHEN_LOCKED and await asyncio.to_thread(workstation_locked):
+            if path not in READ_WHEN_LOCKED and await asyncio.to_thread(workstation_locked):
                 return json_error(423, "ПК заблокирован. Управление недоступно.")
         try:
             return await handler(request)
@@ -531,60 +537,120 @@ def make_app(features_getter=lambda: None):
         logger.info("Phone paired: %s (%s)", device, request.remote)
         return web.json_response({"ok": True, "token": token, "name": socket.gethostname()})
 
+    async def info(_):
+        return web.json_response({"ok": True, "app": "PulsePC", "api": 1, "pairing": pairing.active()})
+
+    async def pair_with_code(request):
+        # The owner pressed «Подключить по коду» on the PC; the phone proves it saw the code.
+        try:
+            body = await request.json()
+        except ValueError:
+            body = {}
+        device = str(body.get("device", ""))[:40] or "Телефон"
+        if not pairing.active():
+            return json_error(403, "Сначала нажмите «Подключить по коду» на ПК.")
+        if not pairing.verify(body.get("code")):
+            logger.warning("Неверный код сопряжения от %s", request.remote)
+            return json_error(403, "Неверный код." if pairing.active() else "Код больше не действует. Запросите новый на ПК.")
+        token = await asyncio.to_thread(mobile_access.add_device, device)
+        logger.info("Телефон «%s» подключён по коду (%s)", device, request.remote)
+        return web.json_response({"ok": True, "token": token, "name": socket.gethostname(), "api": 1})
+
     app = web.Application(middlewares=[guard], client_max_size=MAX_FILE_BYTES + (1 << 20))
-    app.add_routes(routes)
+    if version == 1:
+        app.router.add_get("/api/v1/info", info)
+        app.router.add_post("/api/v1/pair", pair_with_code)
+        for route in routes:
+            if route.path in ("/api/ping", "/api/pair"):
+                continue    # replaced by /api/v1/info and code pairing
+            app.router.add_route(route.method, "/api/v1/" + route.path[len("/api/"):], route.handler, **route.kwargs)
+    else:
+        app.add_routes(routes)
     return app
 
 
 class DiscoveryProtocol(asyncio.DatagramProtocol):
-    """Answers the phone's UDP broadcast "PULSEPC?" with this PC's name and port."""
-    def __init__(self, port):
+    """Answers the phone's UDP broadcast "PULSEPC?" with this PC's name and port.
+    With API v1 running the reply also has "tls_port" and "api" (extra keys; v0 clients ignore them)."""
+    def __init__(self, port, tls_port=None):
         self.port = port
+        self.tls_port = tls_port
 
     def connection_made(self, transport):
         self.transport = transport
 
     def datagram_received(self, data, addr):
         if data.strip() == b"PULSEPC?" and is_private_ip(addr[0]):
-            reply = json.dumps({"app": "PulsePC", "name": socket.gethostname(), "port": self.port})
+            data = {"app": "PulsePC", "name": socket.gethostname(), "port": self.port}
+            if self.tls_port:
+                data.update(tls_port=self.tls_port, api=[0, 1] if self.port else [1])
+            reply = json.dumps(data)
             self.transport.sendto(reply.encode(), addr)
 
 
 class LocalApiServer:
-    def __init__(self, log_callback, features_getter=lambda: None):
+    """v0 over HTTP (settings «legacy_http») and, when `tls_context` is given, v1 over TLS."""
+
+    def __init__(self, log_callback, features_getter=lambda: None, tls_context=None):
         self.log = log_callback
         self.features_getter = features_getter
-        self.runner = None
+        self.tls_context = tls_context      # callable returning an ssl.SSLContext, or None
+        self.runner = None                  # v0 (HTTP)
+        self.runner_v1 = None               # v1 (TLS)
         self.discovery = None
+
+    @property
+    def running(self):
+        return self.runner is not None or self.runner_v1 is not None
+
+    async def _serve(self, app, port, ssl_context=None):
+        runner = web.AppRunner(app, access_log=None)
+        await runner.setup()
+        try:
+            await web.TCPSite(runner, "0.0.0.0", port, ssl_context=ssl_context).start()
+        except OSError as exc:
+            self.log(f"Локальный API не запущен (порт {port}): {exc}")
+            await runner.cleanup()
+            return None
+        return runner
 
     async def start(self):
         settings = mobile_access.load()
         if not settings["enabled"]:
             return
-        self.runner = web.AppRunner(make_app(self.features_getter), access_log=None)
-        await self.runner.setup()
-        try:
-            await web.TCPSite(self.runner, "0.0.0.0", settings["port"]).start()
-        except OSError as exc:
-            self.log(f"Локальный API не запущен (порт {settings['port']}): {exc}")
-            await self.runner.cleanup()
-            self.runner = None
+        if settings.get("legacy_http", True) or self.tls_context is None:
+            self.runner = await self._serve(make_app(self.features_getter), settings["port"])
+        if self.tls_context is not None:
+            try:
+                context = await asyncio.to_thread(self.tls_context)
+            except Exception as exc:  # noqa: BLE001 - v0 keeps working without TLS
+                self.log(f"Защищённое подключение (TLS) недоступно: {exc}")
+            else:
+                self.runner_v1 = await self._serve(make_app(self.features_getter, version=1),
+                                                   settings["tls_port"], context)
+        if not self.running:
             return
+        port = settings["port"] if self.runner else 0
+        tls_port = settings["tls_port"] if self.runner_v1 else None
         try:
             loop = asyncio.get_running_loop()
             self.discovery, _ = await loop.create_datagram_endpoint(
-                lambda: DiscoveryProtocol(settings["port"]), local_addr=("0.0.0.0", mobile_access.DISCOVERY_PORT))
+                lambda: DiscoveryProtocol(port, tls_port), local_addr=("0.0.0.0", mobile_access.DISCOVERY_PORT))
         except OSError as exc:
             self.log(f"Автопоиск телефоном недоступен (UDP {mobile_access.DISCOVERY_PORT}): {exc}")
-        addresses = [f"{ip}:{settings['port']}" for ip in lan_addresses()]
-        mobile_access.STATE.update(running=True, port=settings["port"], addresses=addresses)
-        self.log(f"Мобильный доступ: {', '.join(addresses) or settings['port']}. Телефоны: {len(settings['devices'])}")
+        shown = settings["port"] if self.runner else settings["tls_port"]
+        addresses = [f"{ip}:{shown}" for ip in lan_addresses()]
+        mobile_access.STATE.update(running=True, port=shown, addresses=addresses)
+        modes = ", ".join(m for m, on in (("HTTP v0", self.runner), ("TLS v1", self.runner_v1)) if on)
+        self.log(f"Мобильный доступ ({modes}): {', '.join(addresses) or shown}. Телефоны: {len(settings['devices'])}")
 
     async def close(self):
         mobile_access.STATE.update(running=False, addresses=[])
         if self.discovery:
             self.discovery.close()
             self.discovery = None
-        if self.runner:
-            await self.runner.cleanup()
-            self.runner = None
+        for name in ("runner", "runner_v1"):
+            runner = getattr(self, name)
+            if runner:
+                await runner.cleanup()
+                setattr(self, name, None)

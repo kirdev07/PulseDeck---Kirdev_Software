@@ -194,8 +194,15 @@ class SettingsScreen(QWidget):
                                         "Если выключено, подключиться смогут только уже сопряжённые телефоны.",
                                         self.allow_pairing))
         card.body.addWidget(divider())
-        card.body.addLayout(setting_row("Порт", "TCP — запросы телефона, UDP — поиск ПК в сети.",
-                                        label(f"{data['port']} / UDP {mobile_access.DISCOVERY_PORT}", "mono")))
+        self.legacy_http = Toggle(data["legacy_http"])
+        self.legacy_http.toggled.connect(lambda on: self.set_phone_option("legacy_http", on))
+        card.body.addLayout(setting_row("Старый протокол без шифрования",
+                                        "Нужен текущей версии Pulse Mobile. Выключите, когда все телефоны перейдут "
+                                        "на подключение по коду (TLS).", self.legacy_http))
+        card.body.addWidget(divider())
+        card.body.addLayout(setting_row("Порты", "HTTP — старый протокол, TLS — защищённый, UDP — поиск ПК.",
+                                        label(f"HTTP {data['port']} · TLS {data['tls_port']} · UDP "
+                                              f"{mobile_access.DISCOVERY_PORT}", "mono")))
         self.phone_message = label("Изменения применяются при следующем запуске сервера.", "caption", wrap=True)
         card.body.addWidget(self.phone_message)
         card.body.addWidget(button("Сопряжённые устройства", lambda: self._navigate("phone"), "ghost", "chevron"))
@@ -369,9 +376,11 @@ class SettingsScreen(QWidget):
              "Токен бота зашифрован средствами Windows для вашей учётной записи" if encrypted
              else "Токен бота хранится в config/.env без шифрования" if token
              else "Токен бота не сохранён на этом ПК"),
-            ("off" if data["enabled"] else "ok",
-             "Связь с телефоном по локальной сети не шифруется (HTTP)" if data["enabled"]
-             else "Сервер для телефона выключен"),
+            ("ok" if not data["enabled"] or not data["legacy_http"] else "off",
+             "Сервер для телефона выключен" if not data["enabled"]
+             else "Телефоны подключаются только по защищённому протоколу (TLS)" if not data["legacy_http"]
+             else "Включён старый протокол без шифрования (HTTP) для текущей версии Pulse Mobile"),
+            ("ok", "Сервер отвечает только устройствам локальной сети"),
             ("off" if data["allow_pairing"] else "ok",
              "Новые телефоны могут запросить подключение (с подтверждением на ПК)" if data["allow_pairing"]
              else "Новые подключения запрещены"),

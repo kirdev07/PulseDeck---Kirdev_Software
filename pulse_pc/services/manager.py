@@ -50,7 +50,7 @@ class ServiceManager:
         self.config_dir = Path(config_dir)
         self.runtime = Runtime()
         self.telegram = TelegramService(self.runtime, store)
-        self.local_api = LocalApiService(self.runtime, store)
+        self.local_api = LocalApiService(self.runtime, store, self.config_dir)
 
     def telegram_configured(self):
         from pulse_pc.core.secrets import load_token

@@ -17,7 +17,9 @@ def public_devices(data):
 
 
 class LocalApiService:
-    def __init__(self, runtime, store):
+    def __init__(self, runtime, store, config_dir=None):
+        import config
+        self.config_dir = config_dir or config.CONFIG_DIR
         self.runtime = runtime
         self.store = store
         self.server = None
@@ -25,7 +27,7 @@ class LocalApiService:
 
     @property
     def running(self):
-        return self.server is not None and self.server.runner is not None
+        return self.server is not None and self.server.running
 
     def start(self):
         return self.runtime.submit(self._start())
@@ -51,9 +53,15 @@ class LocalApiService:
         if status is None:
             status = st.RUNNING if running else st.STOPPED
         port = data["port"]
-        if running and self.server.runner.addresses:
-            port = self.server.runner.addresses[0][1]     # the port actually bound
-        changes = dict(status=status, port=port, devices=public_devices(data),
+        tls_port = 0
+        if running:     # the ports actually bound
+            if self.server.runner and self.server.runner.addresses:
+                port = self.server.runner.addresses[0][1]
+            else:
+                port = 0
+            if self.server.runner_v1 and self.server.runner_v1.addresses:
+                tls_port = self.server.runner_v1.addresses[0][1]
+        changes = dict(status=status, port=port, tls_port=tls_port, devices=public_devices(data),
                        addresses=tuple(a.rsplit(":", 1)[0] for a in mobile_access.STATE["addresses"]) if running else ())
         if error is not None or status != st.ERROR:
             changes["error"] = error or ""
@@ -69,9 +77,11 @@ class LocalApiService:
             logger.info("Сервер для телефона выключен в настройках.")
             return
         self.store.post("phone", status=st.STARTING)
-        self.server = LocalApiServer(lambda text: logger.info("%s", text), lambda: self.runtime.features)
+        from pulse_pc.services.local_api import tls
+        self.server = LocalApiServer(lambda text: logger.info("%s", text), lambda: self.runtime.features,
+                                     tls_context=lambda: tls.server_context(self.config_dir))
         await self.server.start()
-        if self.server.runner is None:
+        if not self.server.running:
             self.server = None
             await asyncio.to_thread(self._publish, st.ERROR,
                                     f"Порт {data['port']} занят другой программой или запрещён системой.")

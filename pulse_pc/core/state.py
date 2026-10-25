@@ -28,7 +28,8 @@ class TelegramState:
 class PhoneState:
     status: str = UNKNOWN       # local API server
     addresses: tuple = ()
-    port: int = 0
+    port: int = 0               # API v0 over HTTP; 0 = not running
+    tls_port: int = 0           # API v1 over TLS; 0 = not running
     devices: tuple = ()         # ({"id", "name", "added", "last_seen"}, ...)
     error: str = ""
 

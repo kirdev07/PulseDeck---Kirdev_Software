@@ -119,13 +119,20 @@ class SettingsScreenTests(unittest.TestCase):
             return " ".join(lines.itemAt(i).widget().text.text() for i in range(lines.count() - 1))
         self.screen.refresh()
         self.assertIn("ID администратора не задан", texts())
-        self.assertIn("не шифруется", texts())
-        cfg.write_env(self.root / ".env", {"BOT_TOKEN": TOKEN, "ADMIN_ID": "7"})
+        self.assertIn("старый протокол без шифрования", texts())
+        self.assertIn("только устройствам локальной сети", texts())
+        mobile_access.set_option("legacy_http", False)
+        self.screen.refresh()
+        self.assertIn("только по защищённому протоколу", texts())
+        cfg.write_env(self.root / ".env", {"BOT_TOKEN": TOKEN, "ADMIN_ID": "7"})   # plain token, not migrated
         mobile_access.set_option("enabled", False)
         self.screen.refresh()
         self.assertIn("ограничен вашим Telegram ID", texts())
-        self.assertIn("без шифрования", texts())
+        self.assertIn("config/.env без шифрования", texts())
         self.assertIn("Сервер для телефона выключен", texts())
+        self.screen.token.setText(TOKEN)
+        self.screen.save_telegram()                                                # now encrypted
+        self.assertIn("зашифрован средствами Windows", texts())
 
     def test_animations_apply_and_persist(self):
         self.screen.animations.click()

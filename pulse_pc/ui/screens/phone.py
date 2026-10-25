@@ -61,7 +61,8 @@ class PhoneScreen(QWidget):
         grid.setColumnStretch(1, 2)
         grid.addWidget(PageHeader("phone", "Телефон", "Pulse Mobile управляет этим ПК по домашней сети."), 0, 0, 1, 2)
         grid.addWidget(self._server_card(), 1, 0)
-        grid.addWidget(self._connect_card(), 1, 1, 2, 1)
+        grid.addWidget(self._connect_card(), 1, 1)
+        grid.addWidget(self._code_card(), 2, 1)
         grid.addWidget(self._devices_card(), 2, 0)
         grid.addWidget(self._history_card(), 3, 0, 1, 2)
         grid.setRowStretch(4, 1)
@@ -125,6 +126,56 @@ class PhoneScreen(QWidget):
         card.body.addStretch(1)
         return card
 
+    def _code_card(self):
+        card = Card("Подключить по коду")
+        card.body.addWidget(label("Защищённое подключение (TLS) для новых версий Pulse Mobile: введите код на "
+                                  "телефоне и сверьте отпечаток.", "caption", wrap=True))
+        self.code_label = label("", "display")
+        self.code_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.code_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        card.body.addWidget(self.code_label)
+        self.code_detail = label("", "caption", wrap=True)
+        self.code_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        card.body.addWidget(self.code_detail)
+        self.code_button = button("Показать код", self.start_code, "primary", "shield")
+        card.body.addWidget(self.code_button)
+        self.code_timer = QTimer(self, interval=1000, timeout=self._tick_code)
+        self._tick_code()
+        return card
+
+    def start_code(self):
+        if mobile_access.PAIRING.active():
+            mobile_access.PAIRING.cancel()
+        else:
+            mobile_access.PAIRING.start()
+            self.code_timer.start()
+        self._tick_code()
+
+    def _tick_code(self):
+        from pulse_pc.services.local_api import tls
+        left = mobile_access.PAIRING.remaining()
+        state = self.store.state.phone
+        if not state.tls_port:
+            self.code_label.setText("")
+            self.code_detail.setText("Защищённый сервер не запущен." if state.status == st.RUNNING else "")
+            self.code_button.setEnabled(False)
+            self.code_timer.stop()
+            return
+        self.code_button.setEnabled(True)
+        if left:
+            code = mobile_access.PAIRING.current()
+            self.code_label.setText(f"{code[:3]} {code[3:]}")
+            config_dir = getattr(getattr(self.services, "local_api", None), "config_dir", None)
+            print_ = tls.short_fingerprint(tls.fingerprint(config_dir)) if config_dir else ""
+            self.code_detail.setText(f"Действует ещё {left} с · порт {state.tls_port}"
+                                     + (f"\nОтпечаток: {print_}" if print_ else ""))
+            self.code_button.setText("Отменить")
+        else:
+            self.code_timer.stop()
+            self.code_label.setText("")
+            self.code_detail.setText(f"Порт TLS {state.tls_port}. Код действует 2 минуты и один раз.")
+            self.code_button.setText("Показать код")
+
     def _devices_card(self):
         card = Card("Подключённые устройства")
         self.devices_count = card.add_action(label("", "caption"))
@@ -145,6 +196,7 @@ class PhoneScreen(QWidget):
         self.devices_empty = EmptyState("phone", "Телефоны не подключены",
                                         "Следуйте шагам справа. Каждый телефон получает собственный ключ доступа.")
         card.body.addWidget(self.devices_empty)
+        card.body.addStretch(1)
         return card
 
     def _history_card(self):
@@ -172,6 +224,7 @@ class PhoneScreen(QWidget):
     def _changed(self, part, value):
         if part == "phone":
             self._show(value)
+            self._tick_code()
 
     def _show(self, value):
         text, dot = STATUS.get(value.status, STATUS[st.UNKNOWN])
