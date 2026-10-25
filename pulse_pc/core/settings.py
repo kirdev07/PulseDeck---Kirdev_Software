@@ -29,6 +29,7 @@ def atomic_write_text(path, text):
 @dataclass
 class UiSettings:
     animations: bool = True
+    telegram_autostart: bool = True     # start the bot with Pulse-PC when it is configured
     start_page: str = "dashboard"
 
 

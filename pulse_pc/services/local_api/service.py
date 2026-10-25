@@ -50,7 +50,10 @@ class LocalApiService:
         running = self.running
         if status is None:
             status = st.RUNNING if running else st.STOPPED
-        changes = dict(status=status, port=data["port"], devices=public_devices(data),
+        port = data["port"]
+        if running and self.server.runner.addresses:
+            port = self.server.runner.addresses[0][1]     # the port actually bound
+        changes = dict(status=status, port=port, devices=public_devices(data),
                        addresses=tuple(a.rsplit(":", 1)[0] for a in mobile_access.STATE["addresses"]) if running else ())
         if error is not None or status != st.ERROR:
             changes["error"] = error or ""

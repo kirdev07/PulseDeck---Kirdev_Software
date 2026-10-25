@@ -39,7 +39,7 @@ class NoSessions(media.MediaSessions):
 
 class PlayerTestCase(unittest.TestCase):
     def setUp(self):
-        self.dir = tempfile.TemporaryDirectory()
+        self.dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)  # Windows Media may still hold a file
         root = Path(self.dir.name)
         (root / "lib").mkdir()
         for name in ("x", "y", "z"):

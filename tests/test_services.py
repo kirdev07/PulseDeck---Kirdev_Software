@@ -189,6 +189,7 @@ class TelegramServiceTests(ServiceTestCase):
         self.assertTrue(wait_for(lambda: self.telegram_status() == st.RUNNING))
         self.api.message(STRANGER, "/status")
         self.assertTrue(wait_for(lambda: self.store.state.telegram.denied == 1))
+        self.assertTrue(wait_for(lambda: any(m["chat_id"] == str(STRANGER) for m in self.api.sent)))
         reply = next(m for m in self.api.sent if m["chat_id"] == str(STRANGER))
         self.assertIn("Доступ ограничен", reply["text"])
         self.assertNotIn("Процессор", reply["text"])

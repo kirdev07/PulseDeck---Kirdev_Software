@@ -41,8 +41,10 @@ def _lazy(module):
 SCREENS = (
     Screen("dashboard", "Главная", "home", "Ваш компьютер под контролем.", ("dashboard", "система", "cpu", "ram"),
            factory=_lazy("dashboard")),
-    Screen("telegram", "Telegram Бот", "telegram", "Управление, мониторинг и настройки бота.", ("бот", "telegram")),
-    Screen("phone", "Телефон", "phone", "Подключение и управление мобильными устройствами.", ("android", "pulse mobile")),
+    Screen("telegram", "Telegram Бот", "telegram", "Управление, мониторинг и настройки бота.", ("бот", "telegram"),
+           factory=_lazy("telegram")),
+    Screen("phone", "Телефон", "phone", "Подключение и управление мобильными устройствами.", ("android", "pulse mobile"),
+           factory=_lazy("phone")),
     Screen("apps", "Приложения", "apps", "Запуск и завершение настроенных программ.", ("программы",),
            factory=_lazy("apps")),
     Screen("console", "Консоль", "console", "Журнал событий и диагностика.", ("журнал", "логи"),

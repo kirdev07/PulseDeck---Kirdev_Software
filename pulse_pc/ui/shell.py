@@ -14,10 +14,13 @@ EDGE = 6  # px of the window border that resizes it
 class MainWindow(QMainWindow):
     def __init__(self, screens=SCREENS, *, context=None, animate=True):
         super().__init__()
+        if context is None:     # previews and tests: no services, every screen shows «Нет данных»
+            from pulse_pc.core.context import AppContext
+            from pulse_pc.core.state import StateStore
+            context = AppContext(store=StateStore())
         self.context = context
-        if context is not None:
-            context.navigate = self.open
-            context.window = self
+        context.navigate = self.open
+        context.window = self
         self.screens = {screen.key: screen for screen in screens}
         self.pages = {}
         self.setWindowTitle(APP_NAME)

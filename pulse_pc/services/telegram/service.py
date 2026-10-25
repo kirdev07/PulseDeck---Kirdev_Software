@@ -18,6 +18,8 @@ import config
 from pulse_pc.core import state as st
 
 logger = logging.getLogger("pulse_pc.services.telegram")
+# aiogram logs every handled update at INFO; keep only its warnings and errors in the journal.
+logging.getLogger("aiogram.event").setLevel(logging.WARNING)
 HANDLER_MODULES = ("advanced_handlers", "remote_tools", "system_handlers", "media_handlers", "program_handlers",
                    "file_handlers")
 POLLING_TIMEOUT = 25        # long polling, seconds

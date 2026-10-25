@@ -72,7 +72,7 @@ def main(argv=None):
     context.tray = tray if tray.available else None
 
     context.metrics.start()
-    services.start()
+    services.start(telegram=ui.telegram_autostart)
 
     def shutdown():
         context.metrics.stop()
