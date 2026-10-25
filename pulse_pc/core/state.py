@@ -6,7 +6,7 @@ UI says so instead of inventing a status.
 """
 from dataclasses import dataclass, field, replace
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, Qt, Signal
 
 UNKNOWN, STOPPED, STARTING, RUNNING, RECONNECTING, ERROR = (
     "unknown", "stopped", "starting", "running", "reconnecting", "error")
@@ -15,9 +15,13 @@ UNKNOWN, STOPPED, STARTING, RUNNING, RECONNECTING, ERROR = (
 @dataclass(frozen=True)
 class TelegramState:
     status: str = UNKNOWN
-    bot_name: str = ""
+    bot_name: str = ""          # @username
+    bot_title: str = ""         # display name
     since: float = 0.0          # time.time() when RUNNING began
     error: str = ""
+    updates: int = 0            # Telegram updates handled since start
+    denied: int = 0             # updates from users other than the administrator
+    failures: int = 0           # handler errors since start
 
 
 @dataclass(frozen=True)
@@ -25,7 +29,8 @@ class PhoneState:
     status: str = UNKNOWN       # local API server
     addresses: tuple = ()
     port: int = 0
-    devices: tuple = ()         # ({"id", "name", "last_seen"}, ...)
+    devices: tuple = ()         # ({"id", "name", "added", "last_seen"}, ...)
+    error: str = ""
 
 
 @dataclass(frozen=True)
@@ -47,13 +52,21 @@ class AppState:
 
 
 class StateStore(QObject):
-    """Holds an immutable AppState; `update(part, **changes)` swaps in a new copy."""
+    """Holds an immutable AppState; `update(part, **changes)` swaps in a new copy.
+
+    `update` must run in the UI thread; services in other threads call `post`, which
+    queues the change to the UI thread."""
 
     changed = Signal(str, object)   # (part, new value)
+    _posted = Signal(str, object)
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.state = AppState()
+        self._posted.connect(lambda part, changes: self.update(part, **changes), Qt.ConnectionType.QueuedConnection)
+
+    def post(self, part, **changes):
+        self._posted.emit(part, changes)
 
     def update(self, part, **changes):
         current = getattr(self.state, part)

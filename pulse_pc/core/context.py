@@ -9,5 +9,7 @@ class AppContext:
     logbook: object = None            # core.logbook.Logbook
     player: object = None             # services.media.player.MusicPlayer
     metrics: object = None            # services.system.metrics.MetricsService
+    services: object = None           # services.manager.ServiceManager
+    tray: object = None               # ui.tray.Tray when the system tray exists
     window: object = None             # the main window, set by it
     navigate: Optional[Callable[[str], None]] = None   # set by the main window

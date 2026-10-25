@@ -64,6 +64,20 @@ class MainWindow(QMainWindow):
         self.stack.show_page(page)
         self.sidebar.select(key)
 
+    def closeEvent(self, event):
+        # With a tray icon the window only hides: Telegram and the phone server keep working.
+        tray = getattr(self.context, "tray", None)
+        if tray is not None:
+            event.ignore()
+            self.hide()
+            if not getattr(self, "_tray_hint_shown", False):
+                self._tray_hint_shown = True
+                tray.notify("Pulse-PC работает в фоне", "Откройте окно или выйдите через значок в трее.")
+            return
+        super().closeEvent(event)
+        from PySide6.QtWidgets import QApplication
+        QApplication.instance().quit()
+
     # ----- frameless window: border, resize edges -----
     def paintEvent(self, event):
         super().paintEvent(event)
