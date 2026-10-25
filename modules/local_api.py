@@ -27,7 +27,8 @@ from modules.utils import kill_process
 logger = logging.getLogger(__name__)
 MAX_FILE_BYTES = 200 * 1024 * 1024
 # Read-only endpoints that still work while the PC is locked (phone notifications).
-READ_WHEN_LOCKED = {"/api/status", "/api/events", "/api/player/state", "/api/player/cover"}
+# The panel (/api/display) keeps showing data while the PC is locked; it refuses commands itself.
+READ_WHEN_LOCKED = {"/api/status", "/api/events", "/api/player/state", "/api/player/cover", "/api/display"}
 MEDIA_KEYS = {"prev": "prevtrack", "play": "playpause", "next": "nexttrack",
               "voldown": "volumedown", "volup": "volumeup", "mute": "volumemute"}
 
@@ -405,22 +406,41 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
     async def external_player(source=None):
         return await now_playing.state(source) if now_playing.AVAILABLE else None
 
-    @routes.get("/api/player/state")
-    async def player_state(request):
+    async def current_player(source=""):
         """source: '' = automatic, 'pulse' = built-in player, anything else = app id of a media session."""
-        source = request.query.get("source", "")
         own = player_bridge.snapshot()
         if source == "pulse":
-            data = own_player() if own["active"] else None
-        elif source:
-            data = await external_player(source)
-        else:
-            external = await external_player()
-            # The built-in player wins unless it is paused while another app is playing.
-            if own["active"] and (own["status"] == "playing" or not external or external["status"] != "playing"):
-                data = own_player()
-            else:
-                data = external
+            return own_player() if own["active"] else None
+        if source:
+            return await external_player(source)
+        external = await external_player()
+        # The built-in player wins unless it is paused while another app is playing.
+        if own["active"] and (own["status"] == "playing" or not external or external["status"] != "playing"):
+            return own_player()
+        return external
+
+    async def control_player(cmd, value=None, source=""):
+        if cmd not in ("toggle", "play", "pause", "next", "prev", "seek", "volume"):
+            raise ValueError("Неизвестная команда плеера.")
+        own = player_bridge.snapshot()
+        if source == "pulse" or (not source and own["active"]):
+            player_bridge.send(cmd, value)
+            return
+        if cmd == "volume":
+            raise ValueError("Громкость плеера доступна только во встроенном плеере PulseDeck.")
+        handled = now_playing.AVAILABLE and await now_playing.command(cmd, value, source or None)
+        if not handled and source:
+            raise ValueError("Этот источник больше не играет.")
+        if not handled:
+            keys = {"toggle": "playpause", "play": "playpause", "pause": "playpause", "next": "nexttrack", "prev": "prevtrack"}
+            if cmd not in keys:
+                raise ValueError("Сейчас ничего не играет.")
+            from modules import keys as media_keys
+            await asyncio.to_thread(media_keys.press, keys[cmd])
+
+    @routes.get("/api/player/state")
+    async def player_state(request):
+        data = await current_player(request.query.get("source", ""))
         level = await asyncio.to_thread(system_volume.get)        # exact PC volume when pycaw is installed
         return web.json_response({"ok": True, "player": data or {"status": "none"}, "system_volume": level})
 
@@ -469,27 +489,8 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
 
     @routes.post("/api/player/{cmd}")
     async def player_command(request):
-        cmd = request.match_info["cmd"]
         body = await request.json() if request.can_read_body else {}
-        value = body.get("value")
-        source = str(body.get("source") or "")
-        if cmd not in ("toggle", "play", "pause", "next", "prev", "seek", "volume"):
-            raise ValueError("Неизвестная команда плеера.")
-        own = player_bridge.snapshot()
-        if source == "pulse" or (not source and own["active"]):
-            player_bridge.send(cmd, value)
-            return web.json_response({"ok": True})
-        if cmd == "volume":
-            raise ValueError("Громкость плеера доступна только во встроенном плеере PulseDeck.")
-        handled = now_playing.AVAILABLE and await now_playing.command(cmd, value, source or None)
-        if not handled and source:
-            raise ValueError("Этот источник больше не играет.")
-        if not handled:
-            keys = {"toggle": "playpause", "play": "playpause", "pause": "playpause", "next": "nexttrack", "prev": "prevtrack"}
-            if cmd not in keys:
-                raise ValueError("Сейчас ничего не играет.")
-            from modules import keys as media_keys
-            await asyncio.to_thread(media_keys.press, keys[cmd])
+        await control_player(request.match_info["cmd"], body.get("value"), str(body.get("source") or ""))
         return web.json_response({"ok": True})
 
     # ---- Notifications for the phone ----
@@ -558,6 +559,8 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
 
     app = web.Application(middlewares=[guard], client_max_size=MAX_FILE_BYTES + (1 << 20))
     if version == 1:
+        from modules.display_api import add_display_route
+        add_display_route(app, current_player, control_player, workstation_locked)
         app.router.add_get("/api/v1/info", info)
         app.router.add_post("/api/v1/pair", pair_with_code)
         for route in routes:

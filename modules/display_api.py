@@ -1,0 +1,201 @@
+"""WebSocket for PulseDeck Panel (the Android information display): /api/v1/display.
+
+Runs only on the TLS server (API v1), behind the same guard as every other v1 route:
+LAN peers only and a valid per-device token (pairing by code, revocable on the PC).
+Protocol: docs/PANEL_PROTOCOL.md.
+
+Server -> panel: hello, metrics (every METRICS_SECONDS), media (on change), error.
+Panel -> server: {"type": "command", "action": "toggle" | "next" | "prev"}, {"type": "ping"}.
+"""
+import asyncio
+import concurrent.futures
+import logging
+import socket
+import time
+
+from aiohttp import WSMsgType, web
+
+from modules import mobile_access
+
+logger = logging.getLogger(__name__)
+PROTOCOL = 1
+METRICS_SECONDS = 1.5
+MEDIA_SECONDS = 1.0
+MEDIA_RESYNC_SECONDS = 5.0      # position is re-sent this often; the panel interpolates in between
+AUTH_RECHECK_SECONDS = 5.0      # a revoked phone is disconnected within this time
+COMMANDS = {"toggle", "next", "prev"}
+CLOSE_REVOKED = 4001
+
+
+def _volume_labels():
+    labels = {}
+    try:
+        import psutil
+        import win32api
+        for part in psutil.disk_partitions(all=False):
+            try:
+                labels[part.mountpoint.rstrip("\\")] = win32api.GetVolumeInformation(part.mountpoint)[0]
+            except Exception:  # noqa: BLE001 - removable drive without media, access denied
+                continue
+    except ImportError:
+        pass
+    return labels
+
+
+class MetricsReader:
+    """MetricsSampler in its own thread: Windows performance counters belong to the thread
+    that opened them, so every sample for this panel runs on the same worker."""
+
+    def __init__(self):
+        self.pool = concurrent.futures.ThreadPoolExecutor(max_workers=1, thread_name_prefix="PulseDeck-panel")
+        self.sampler = None
+        self.labels = {}
+
+    def _sample(self):
+        if self.sampler is None:
+            from pulse_pc.services.system.metrics import MetricsSampler
+            self.sampler = MetricsSampler()
+            self.labels = _volume_labels()
+        return metrics_message(self.sampler.sample(), self.labels)
+
+    async def read(self):
+        return await asyncio.get_running_loop().run_in_executor(self.pool, self._sample)
+
+    def close(self):
+        def stop():
+            if self.sampler:
+                self.sampler.close()
+        self.pool.submit(stop)
+        self.pool.shutdown(wait=False)
+
+
+def _round(value, digits=1):
+    return None if value is None else round(float(value), digits)
+
+
+def metrics_message(snap, labels=None):
+    """Snapshot -> wire format. Unknown values are null, never invented."""
+    labels = labels or {}
+    return {
+        "type": "metrics",
+        "cpu": {"load": _round(snap.cpu), "temp": None},
+        "gpu": {"load": _round(snap.gpu), "temp": None, "name": snap.gpu_name or None},
+        "ram": {"percent": _round(snap.ram), "used": snap.ram_used, "total": snap.ram_total},
+        "disks": [{"name": disk.mount, "label": labels.get(disk.mount, ""), "total": disk.total,
+                   "free": max(0, disk.total - disk.used)} for disk in snap.disks],
+    }
+
+
+def media_message(player):
+    """Player state from the local API -> wire format; None when nothing can be shown."""
+    if not player or player.get("status") not in ("playing", "paused") or not (player.get("title") or "").strip():
+        return {"type": "media", "session": None}
+    return {"type": "media", "session": {
+        "title": player.get("title") or "",
+        "artist": player.get("artist") or "",
+        "album": player.get("album") or "",
+        "status": player["status"],
+        "position": _round(player.get("position") or 0.0),
+        "duration": _round(player.get("duration") or 0.0),
+        "source": player.get("source") or "",
+        "cover": player.get("cover") or "",
+        "can_prev": bool(player.get("can_prev", True)),
+        "can_next": bool(player.get("can_next", True)),
+    }}
+
+
+def _same_track(a, b):
+    """Equal apart from the playback position (which moves every second)."""
+    if (a or {}).get("session") is None or (b or {}).get("session") is None:
+        return a == b
+    strip = lambda m: {k: v for k, v in m["session"].items() if k != "position"}   # noqa: E731
+    return strip(a) == strip(b)
+
+
+def add_display_route(app, current_player, control_player, workstation_locked):
+    async def display(request):
+        token = request.headers.get("Authorization", "")[7:]     # already checked by the guard
+        ws = web.WebSocketResponse(heartbeat=20, max_msg_size=4096)
+        await ws.prepare(request)
+        device = await asyncio.to_thread(mobile_access.authenticate, token)
+        logger.info("Панель подключена: %s (%s)", (device or {}).get("name", "?"), request.remote)
+        reader = MetricsReader()
+        send_lock = asyncio.Lock()
+
+        async def send(message):
+            async with send_lock:
+                if not ws.closed:
+                    await ws.send_json(message)
+
+        async def metrics_loop():
+            while not ws.closed:
+                try:
+                    await send(await reader.read())
+                except (ConnectionError, RuntimeError):
+                    return
+                except Exception:  # noqa: BLE001 - keep the panel alive after a bad sample
+                    logger.exception("Не удалось собрать показатели для панели")
+                await asyncio.sleep(METRICS_SECONDS)
+
+        async def media_loop():
+            last, sent_at = None, 0.0
+            while not ws.closed:
+                try:
+                    message = media_message(await current_player())
+                    now = time.monotonic()
+                    playing = (message["session"] or {}).get("status") == "playing"
+                    if not _same_track(message, last) or (playing and now - sent_at >= MEDIA_RESYNC_SECONDS):
+                        await send(message)
+                        last, sent_at = message, now
+                except (ConnectionError, RuntimeError):
+                    return
+                except Exception:  # noqa: BLE001 - media sessions disappear mid-read
+                    logger.debug("Состояние плеера недоступно", exc_info=True)
+                await asyncio.sleep(MEDIA_SECONDS)
+
+        async def auth_loop():
+            # Revocation on the PC must cut an open connection, not only new ones.
+            while not ws.closed:
+                await asyncio.sleep(AUTH_RECHECK_SECONDS)
+                if not await asyncio.to_thread(mobile_access.authenticate, token):
+                    logger.info("Доступ панели отозван, соединение закрыто.")
+                    await ws.close(code=CLOSE_REVOKED, message=b"revoked")
+                    return
+
+        await send({"type": "hello", "protocol": PROTOCOL, "app": "PulseDeck", "name": socket.gethostname(),
+                    "metrics_interval": METRICS_SECONDS, "commands": sorted(COMMANDS)})
+        tasks = [asyncio.create_task(loop()) for loop in (metrics_loop, media_loop, auth_loop)]
+        try:
+            async for msg in ws:
+                if msg.type != WSMsgType.TEXT:
+                    continue
+                try:
+                    data = msg.json()
+                except ValueError:
+                    await send({"type": "error", "code": "bad_message", "message": "Ожидается JSON."})
+                    continue
+                kind = data.get("type") if isinstance(data, dict) else None
+                if kind == "ping":
+                    await send({"type": "pong"})
+                elif kind == "command":
+                    action = data.get("action")
+                    if action not in COMMANDS:      # only playback; nothing else can be run from the panel
+                        await send({"type": "error", "code": "bad_command", "message": "Команда не поддерживается."})
+                    elif await asyncio.to_thread(workstation_locked):
+                        await send({"type": "error", "code": "locked", "message": "ПК заблокирован."})
+                    else:
+                        try:
+                            await control_player(action)
+                        except ValueError as exc:
+                            await send({"type": "error", "code": "player", "message": str(exc)})
+                else:
+                    await send({"type": "error", "code": "bad_message", "message": "Неизвестный тип сообщения."})
+        finally:
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            reader.close()
+            logger.info("Панель отключена (%s)", request.remote)
+        return ws
+
+    app.router.add_get("/api/v1/display", display)
