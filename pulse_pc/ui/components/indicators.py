@@ -6,6 +6,8 @@ from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QAbstractButton, QHBoxLayout, QLabel, QProgressBar, QSizePolicy, QVBoxLayout, QWidget
 
 from pulse_pc.ui.components.basic import UNAVAILABLE, Card, label, set_kind
+
+LOADING = "…"
 from pulse_pc.ui.theme import icon, tokens
 
 
@@ -209,7 +211,7 @@ class StatTile(Card):
         head.addWidget(self.name)
         head.addStretch(1)
         self.body.addLayout(head)
-        self.value = label(UNAVAILABLE, "unavailable")
+        self.value = label(LOADING, "unavailable")   # until the first real reading arrives
         self.body.addWidget(self.value)
         self.detail = label("", "caption")
         self.detail.setMinimumHeight(self.detail.fontMetrics().height())  # keep tiles aligned when empty

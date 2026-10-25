@@ -42,7 +42,7 @@ class ThemeTests(unittest.TestCase):
 class ComponentTests(unittest.TestCase):
     def test_stat_tile_reports_unavailable_honestly(self):
         tile = StatTile("gpu", "GPU")
-        self.assertEqual(tile.value.text(), UNAVAILABLE)
+        self.assertEqual(tile.value.text(), "…")  # no reading yet is not the same as unavailable
         tile.set_value(42.4, "1.2 ГГц")
         self.assertEqual(tile.value.text(), "42%")
         self.assertEqual(tile.bar.value(), 424)

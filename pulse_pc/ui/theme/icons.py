@@ -39,6 +39,12 @@ _PATHS = {
     "stop": '<rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/>',
     "prev": '<path d="M19 5v14l-10-7z" fill="currentColor"/><path d="M6 5v14"/>',
     "next": '<path d="M5 5v14l10-7z" fill="currentColor"/><path d="M18 5v14"/>',
+    "shuffle": '<path d="M3 7h3.5c2 0 3.2 1 4.3 2.7l2.4 4.6c1.1 1.7 2.3 2.7 4.3 2.7H21"/><path d="M3 17h3.5c1.4 0 2.4-.5 3.3-1.4"/>'
+               '<path d="M14.2 8.4c.9-.9 1.9-1.4 3.3-1.4H21"/><path d="m18.5 4.5 2.5 2.5-2.5 2.5M18.5 14.5l2.5 2.5-2.5 2.5"/>',
+    "repeat": '<path d="M4 11V9a3 3 0 0 1 3-3h13"/><path d="m17 3 3 3-3 3"/><path d="M20 13v2a3 3 0 0 1-3 3H4"/><path d="m7 21-3-3 3-3"/>',
+    "repeat-one": '<path d="M4 11V9a3 3 0 0 1 3-3h13"/><path d="m17 3 3 3-3 3"/><path d="M20 13v2a3 3 0 0 1-3 3H4"/>'
+                  '<path d="m7 21-3-3 3-3"/><path d="M11.5 10.5 13 9.5v5"/>',
+    "volume": '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
     "plus": '<path d="M12 5v14M5 12h14"/>',
     "check": '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     "chevron": '<path d="m9.5 6 6 6-6 6"/>',

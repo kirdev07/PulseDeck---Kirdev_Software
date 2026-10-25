@@ -42,7 +42,9 @@ def main(argv=None):
     from pulse_pc.core.logbook import Logbook
     logbook = Logbook(Path(config.CONFIG_DIR) / "logs")
     logbook.install()
-    context = AppContext(store=StateStore(), logbook=logbook, metrics=MetricsService())
+    from pulse_pc.services.media.player import MusicPlayer, publish_to_store
+    context = AppContext(store=StateStore(), logbook=logbook, metrics=MetricsService(), player=MusicPlayer(app))
+    publish_to_store(context.player, context.store)
     screens = SCREENS
     if "--gallery" in argv:
         from pulse_pc.ui.gallery import SCREENS_WITH_GALLERY
