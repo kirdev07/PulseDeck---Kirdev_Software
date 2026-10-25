@@ -241,11 +241,14 @@ class StatTile(Card):
         else:
             self.value.setText(f"{value:.0f}{self.unit}" if isinstance(value, (int, float)) else str(value))
             set_kind(self.value, "value")
-            if fraction is None and self.unit == "%":
+            numeric = isinstance(value, (int, float))
+            if fraction is None and self.unit == "%" and numeric:
                 fraction = value / 100
             if fraction is not None:
                 self.bar.setValue(round(max(0.0, min(1.0, fraction)) * 1000))
                 self.bar.show()
+            else:
+                self.bar.hide()
             if self.chart and isinstance(value, (int, float)):
                 self.chart.append(value)
         self.detail.setText(detail)

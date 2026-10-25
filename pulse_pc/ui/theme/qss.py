@@ -42,6 +42,7 @@ QPushButton[kind='primary']:pressed {{ background: #C8C8C8; }}
 QPushButton[kind='primary']:disabled {{ background: {t.SURFACE_3}; color: {t.TEXT_DISABLED}; border-color: {t.SURFACE_3}; }}
 QPushButton[kind='ghost'] {{ background: transparent; border-color: transparent; color: {t.TEXT_2}; }}
 QPushButton[kind='ghost']:hover {{ background: {t.SURFACE_2}; color: {t.TEXT}; }}
+QPushButton[kind='ghost']:checked {{ background: {t.SURFACE_3}; color: {t.TEXT}; }}
 QPushButton[kind='nav'] {{ background: transparent; border: none; border-radius: {t.RADIUS_SM}px; color: {t.TEXT_2};
                           text-align: left; padding: 0 12px; font-weight: 500; }}
 QPushButton[kind='nav']:hover {{ background: {t.SURFACE_2}; color: {t.TEXT}; }}
