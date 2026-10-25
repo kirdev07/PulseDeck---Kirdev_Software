@@ -21,7 +21,7 @@ from pulse_pc.services.system import autostart, components
 from pulse_pc.ui.components import Card, PageHeader, StatusLine, Toggle, button, divider, label
 from pulse_pc.ui.theme import icon, tokens
 
-ROOT = Path(__file__).resolve().parents[3]
+ROOT = Path(config.RESOURCE_DIR)   # LICENSE, PRIVACY_POLICY.md … (bundled next to the code in builds)
 REPOSITORY = "https://github.com/kirdev07/Pulse-PC"
 SECTIONS = (
     ("general", "Основные", "settings"),
@@ -223,7 +223,7 @@ class SettingsScreen(QWidget):
         layout.addWidget(card)
         data = Card("Данные на этом ПК")
         data.body.addWidget(label(f"Настройки, журнал и полученные файлы хранятся в {self.config_dir} "
-                                  f"и {Path(config.APP_DIR) / 'files'}. Pulse-PC не отправляет их разработчику.",
+                                  f"и {config.FILES_DIR}. Pulse-PC не отправляет их разработчику.",
                                   "muted", wrap=True))
         data.body.addWidget(button("Открыть папку настроек", lambda: QDesktopServices.openUrl(
             QUrl.fromLocalFile(str(self.config_dir))), symbol="folder"))

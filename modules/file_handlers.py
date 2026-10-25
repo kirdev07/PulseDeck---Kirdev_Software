@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 router = Router()
 
 # Ensure files folder exists in the executable's directory
-FILES_DIR = os.path.join(config.APP_DIR, "files")
+FILES_DIR = config.FILES_DIR
 os.makedirs(FILES_DIR, exist_ok=True)
 
 

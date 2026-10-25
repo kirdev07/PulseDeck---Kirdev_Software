@@ -50,7 +50,7 @@ def file_roots():
             pass
         result.append((title, path))
     result.append(("Домашняя папка", Path.home()))
-    result.append(("Полученные файлы", Path(config.APP_DIR) / "files"))
+    result.append(("Полученные файлы", Path(config.FILES_DIR)))
     for letter in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
         path = Path(f"{letter}:\\")
         if path.exists():

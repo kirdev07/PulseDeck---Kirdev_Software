@@ -329,7 +329,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
         from pathlib import Path
         from modules.transfer_history import record_transfer
         name = Path(request.query.get("name", "file").replace("\\", "/")).name or "file"
-        target_dir = Path(config.APP_DIR) / "files"
+        target_dir = Path(config.FILES_DIR)
         target_dir.mkdir(exist_ok=True)
         target = target_dir / name
         counter = 1

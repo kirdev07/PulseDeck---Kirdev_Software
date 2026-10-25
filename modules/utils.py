@@ -19,7 +19,7 @@ import config
 def cleanup_old_files(days=3):
     """Удаляет файлы старше `days` дней из папки files."""
     try:
-        files_dir = os.path.join(config.APP_DIR, "files")
+        files_dir = config.FILES_DIR
         if not os.path.exists(files_dir):
             return
             

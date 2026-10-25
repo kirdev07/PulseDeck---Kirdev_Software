@@ -2,15 +2,23 @@ import os
 import sys
 from dotenv import load_dotenv
 
-# Определяем базовую директорию проекта
-if getattr(sys, 'frozen', False):
-    # Если запущено как скомпилированный EXE через PyInstaller
+# Где лежит программа и где её данные.
+#   Запуск из исходников: данные рядом с кодом (config/, files/), как раньше.
+#   Установленная сборка (PyInstaller): программа в папке установки, а данные в
+#   %APPDATA%\Pulse-PC — они переживают обновление и удаление программы.
+#   PULSE_PC_DATA_DIR переопределяет папку данных (переносная установка, тесты).
+FROZEN = getattr(sys, 'frozen', False)
+if FROZEN:
     APP_DIR = os.path.dirname(sys.executable)
+    RESOURCE_DIR = getattr(sys, "_MEIPASS", APP_DIR)
 else:
-    # При обычном запуске
     APP_DIR = os.path.dirname(os.path.abspath(__file__))
+    RESOURCE_DIR = APP_DIR
 
-CONFIG_DIR = os.path.join(APP_DIR, "config")
+DATA_DIR = os.environ.get("PULSE_PC_DATA_DIR") or (
+    os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "Pulse-PC") if FROZEN else APP_DIR)
+CONFIG_DIR = os.path.join(DATA_DIR, "config")
+FILES_DIR = os.path.join(DATA_DIR, "files")      # received files
 os.makedirs(CONFIG_DIR, exist_ok=True)
 
 # Для обратной совместимости, BASE_DIR теперь указывает на config
