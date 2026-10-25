@@ -48,5 +48,6 @@ SCREENS = (
     Screen("console", "Консоль", "console", "Журнал событий и диагностика.", ("журнал", "логи"),
            factory=_lazy("console")),
     Screen("music", "Музыка", "music", "Плеер, библиотека и очередь.", ("плеер",), factory=_lazy("music")),
-    Screen("settings", "Настройки", "settings", "Параметры приложения.", ("параметры", "поддержка", "лицензия")),
+    Screen("settings", "Настройки", "settings", "Параметры приложения.", ("параметры", "поддержка", "лицензия"),
+           factory=_lazy("settings")),
 )

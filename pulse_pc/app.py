@@ -49,7 +49,9 @@ def main(argv=None):
     if "--gallery" in argv:
         from pulse_pc.ui.gallery import SCREENS_WITH_GALLERY
         screens = SCREENS_WITH_GALLERY
-    window = MainWindow(screens, context=context)
+    from pulse_pc.core.settings import SettingsStore
+    ui = SettingsStore(Path(config.CONFIG_DIR) / "app_settings.json").load()
+    window = MainWindow(screens, context=context, animate=ui.animations)
     context.metrics.start()
     app.aboutToQuit.connect(context.metrics.stop)
     app.aboutToQuit.connect(logbook.close)

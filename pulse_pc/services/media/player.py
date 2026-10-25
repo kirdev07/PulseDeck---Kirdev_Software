@@ -124,6 +124,10 @@ class MediaSessions(QObject):
 
     def __init__(self, interval=2.0, parent=None):
         super().__init__(parent)
+        from PySide6.QtCore import QCoreApplication
+        app = QCoreApplication.instance()
+        if app is not None:
+            app.aboutToQuit.connect(lambda: self.stop(wait=2.0))
         self.available = now_playing.AVAILABLE
         self.interval = interval
         self._stop = threading.Event()
@@ -139,8 +143,10 @@ class MediaSessions(QObject):
         self._thread = threading.Thread(target=self._run, daemon=True, name="PulsePC-sessions")
         self._thread.start()
 
-    def stop(self):
+    def stop(self, wait=0.0):
         self._stop.set()
+        if wait and self._thread and self._thread.is_alive():
+            self._thread.join(wait)
 
     def command(self, name, source):
         """Send play/pause/next/prev to another app's session (from the UI thread)."""
@@ -153,6 +159,11 @@ class MediaSessions(QObject):
         try:
             loop.run_until_complete(self._poll())
         finally:
+            # The WinRT session manager is a COM object of this thread: release it here,
+            # not later from the main thread during interpreter shutdown.
+            now_playing._manager = None
+            import gc
+            gc.collect()
             self._loop = None
             loop.close()
 

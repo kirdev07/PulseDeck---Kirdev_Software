@@ -17,6 +17,7 @@ class MainWindow(QMainWindow):
         self.context = context
         if context is not None:
             context.navigate = self.open
+            context.window = self
         self.screens = {screen.key: screen for screen in screens}
         self.pages = {}
         self.setWindowTitle(APP_NAME)
