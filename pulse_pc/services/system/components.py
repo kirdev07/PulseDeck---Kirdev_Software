@@ -3,7 +3,7 @@ from importlib import metadata
 
 # Runtime dependencies from requirements*.txt (import name -> distribution name).
 DISTRIBUTIONS = ("PySide6", "aiogram", "aiohttp", "python-dotenv", "psutil", "PyAutoGUI", "pywin32", "mss",
-                 "pillow", "pycaw", "winrt-runtime", "winrt-Windows.Media.Control")
+                 "pillow", "cryptography", "pycaw", "winrt-runtime", "winrt-Windows.Media.Control")
 
 
 def license_of(meta):

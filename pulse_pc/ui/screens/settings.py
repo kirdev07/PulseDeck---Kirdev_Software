@@ -30,6 +30,7 @@ SECTIONS = (
     ("security", "Безопасность", "shield"),
     ("privacy", "Конфиденциальность", "info"),
     ("license", "Лицензия и компоненты", "info"),
+    ("terms", "Условия использования", "info"),
     ("support", "Поддержка", "external"),
     ("about", "О Pulse-PC", "pulse"),
 )
@@ -99,6 +100,7 @@ class SettingsScreen(QWidget):
         self.section_index = {}
         builders = {"general": self._general, "telegram": self._telegram, "phone": self._phone,
                     "security": self._security, "privacy": self._privacy, "license": self._license,
+                    "terms": self._terms,
                     "support": self._support, "about": self._about}
         for key, title, symbol in SECTIONS:
             self.nav.addItem(QListWidgetItem(icon(symbol, tokens.TEXT_2), title))
@@ -250,8 +252,14 @@ class SettingsScreen(QWidget):
         table.setMinimumHeight(40 + 32 * len(items))
         self.components_table = table
         third.body.addWidget(table)
-        third.body.addWidget(label(f"Qt {PYSIDE_VERSION} распространяется по LGPLv3 (PySide6).", "caption"))
+        third.body.addWidget(label(f"Qt {PYSIDE_VERSION} распространяется по LGPLv3 (PySide6). Подробности и "
+                                   "исходный код — в THIRD_PARTY_NOTICES.md.", "caption", wrap=True))
         layout.addWidget(third)
+
+    def _terms(self, layout):
+        card = Card("Условия использования")
+        card.body.addWidget(document(ROOT / "TERMS_OF_USE.md", "Файл TERMS_OF_USE.md не найден."), 1)
+        layout.addWidget(card)
 
     def _support(self, layout):
         card = Card("Связаться с разработчиком")
