@@ -24,7 +24,8 @@ METRICS_SECONDS = 1.5
 MEDIA_SECONDS = 1.0
 MEDIA_RESYNC_SECONDS = 5.0      # position is re-sent this often; the panel interpolates in between
 AUTH_RECHECK_SECONDS = 5.0      # a revoked phone is disconnected within this time
-COMMANDS = {"toggle", "next", "prev"}
+COMMANDS = {"toggle", "next", "prev", "seek", "volume"}
+MIN_INTERVAL, MAX_INTERVAL = 1.0, 10.0      # metrics period the panel may ask for, seconds
 CLOSE_REVOKED = 4001
 
 
@@ -131,13 +132,37 @@ def media_message(player):
 
 def _same_track(a, b):
     """Equal apart from the playback position (which moves every second)."""
+    if (a or {}).get("system_volume") != (b or {}).get("system_volume"):
+        return False
     if (a or {}).get("session") is None or (b or {}).get("session") is None:
         return a == b
     strip = lambda m: {k: v for k, v in m["session"].items() if k != "position"}   # noqa: E731
     return strip(a) == strip(b)
 
 
+def system_volume_state():
+    """{level 0..100, muted} of the PC speakers, or None without pycaw."""
+    from modules import volume
+    return volume.get() if volume.AVAILABLE else None
+
+
 def add_display_route(app, current_player, control_player, workstation_locked):
+    async def run_command(action, value):
+        """Playback and PC volume only; values are validated, nothing else can run."""
+        if action == "seek":
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+                raise ValueError("Позиция — число секунд.")
+            await control_player("seek", float(value))
+        elif action == "volume":
+            from modules import volume
+            if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 100:
+                raise ValueError("Громкость — число от 0 до 100.")
+            if not volume.AVAILABLE:
+                raise ValueError("Громкость ПК недоступна: не установлен pycaw.")
+            await asyncio.to_thread(volume.set_level, value)
+        else:
+            await control_player(action)
+
     async def display(request):
         token = request.headers.get("Authorization", "")[7:]     # already checked by the guard
         ws = web.WebSocketResponse(heartbeat=20, max_msg_size=4096)
@@ -146,7 +171,7 @@ def add_display_route(app, current_player, control_player, workstation_locked):
         logger.info("Панель подключена: %s (%s)", (device or {}).get("name", "?"), request.remote)
         reader = MetricsReader()
         send_lock = asyncio.Lock()
-        wants = {"metrics": True}
+        wants = {"metrics": True, "interval": METRICS_SECONDS}
 
         async def send(message):
             async with send_lock:
@@ -164,13 +189,14 @@ def add_display_route(app, current_player, control_player, workstation_locked):
                     return
                 except Exception:  # noqa: BLE001 - keep the panel alive after a bad sample
                     logger.exception("Не удалось собрать показатели для панели")
-                await asyncio.sleep(METRICS_SECONDS)
+                await asyncio.sleep(wants["interval"])
 
         async def media_loop():
             last, sent_at = None, 0.0
             while not ws.closed:
                 try:
                     message = media_message(await current_player())
+                    message["system_volume"] = await asyncio.to_thread(system_volume_state)
                     now = time.monotonic()
                     playing = (message["session"] or {}).get("status") == "playing"
                     if not _same_track(message, last) or (playing and now - sent_at >= MEDIA_RESYNC_SECONDS):
@@ -208,6 +234,9 @@ def add_display_route(app, current_player, control_player, workstation_locked):
                     await send({"type": "pong"})
                 elif kind == "subscribe":
                     wants["metrics"] = bool(data.get("metrics", True))
+                    interval = data.get("interval")
+                    if isinstance(interval, (int, float)) and not isinstance(interval, bool):
+                        wants["interval"] = min(MAX_INTERVAL, max(MIN_INTERVAL, float(interval)))
                 elif kind == "command":
                     action = data.get("action")
                     if action not in COMMANDS:      # only playback; nothing else can be run from the panel
@@ -216,7 +245,7 @@ def add_display_route(app, current_player, control_player, workstation_locked):
                         await send({"type": "error", "code": "locked", "message": "ПК заблокирован."})
                     else:
                         try:
-                            await control_player(action)
+                            await run_command(action, data.get("value"))
                         except ValueError as exc:
                             await send({"type": "error", "code": "player", "message": str(exc)})
                 else:

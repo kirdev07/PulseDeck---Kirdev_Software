@@ -3,8 +3,9 @@ paired phones with revocation, and recent file transfers."""
 from datetime import datetime
 
 from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QGridLayout, QHBoxLayout, QHeaderView, QMessageBox, QTableWidget, QTableWidgetItem,
+    QAbstractItemView, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 
@@ -128,8 +129,13 @@ class PhoneScreen(QWidget):
 
     def _code_card(self):
         card = Card("Подключить по коду")
-        card.body.addWidget(label("Защищённое подключение (TLS) для новых версий Pulse Mobile: введите код на "
-                                  "телефоне и сверьте отпечаток.", "caption", wrap=True))
+        card.body.addWidget(label("Защищённое подключение (TLS): отсканируйте QR-код в PulseDeck Panel или введите "
+                                  "код на телефоне и сверьте отпечаток.", "caption", wrap=True))
+        self.qr = QLabel()
+        self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.qr.hide()
+        self._qr_code = None
+        card.body.addWidget(self.qr)
         self.code_label = label("", "display")
         self.code_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.code_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -166,12 +172,24 @@ class PhoneScreen(QWidget):
             code = mobile_access.PAIRING.current()
             self.code_label.setText(f"{code[:3]} {code[3:]}")
             config_dir = getattr(getattr(self.services, "local_api", None), "config_dir", None)
-            print_ = tls.short_fingerprint(tls.fingerprint(config_dir)) if config_dir else ""
+            full = tls.fingerprint(config_dir) if config_dir else ""
+            print_ = tls.short_fingerprint(full) if full else ""
+            if full and code != self._qr_code:                  # draw once per code, not every second
+                from pulse_pc.services.local_api import pairing_qr
+                import socket
+                image = QPixmap()
+                image.loadFromData(pairing_qr.png(pairing_qr.payload(
+                    socket.gethostname(), list(state.addresses), state.tls_port, full, code)))
+                self.qr.setPixmap(image)
+                self._qr_code = code
+            self.qr.setVisible(bool(full))
             self.code_detail.setText(f"Действует ещё {left} с · порт {state.tls_port}"
                                      + (f"\nОтпечаток: {print_}" if print_ else ""))
             self.code_button.setText("Отменить")
         else:
             self.code_timer.stop()
+            self.qr.hide()
+            self._qr_code = None
             self.code_label.setText("")
             self.code_detail.setText(f"Порт TLS {state.tls_port}. Код действует 2 минуты и один раз.")
             self.code_button.setText("Показать код")

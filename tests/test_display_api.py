@@ -43,6 +43,17 @@ class WireFormatTests(unittest.TestCase):
         self.assertEqual(display_api.source_name("msedge"), "Microsoft Edge")
         self.assertEqual(display_api.source_name("Some.Vendor_x!Player"), "Player")
 
+    def test_pairing_qr_payload(self):
+        from urllib.parse import parse_qs, urlparse
+        from pulse_pc.services.local_api import pairing_qr
+        text = pairing_qr.payload("PC", ["192.168.1.5", "10.0.0.2"], 8767, "ab:cd", "123456")
+        url = urlparse(text)
+        query = {k: v[0] for k, v in parse_qs(url.query).items()}
+        self.assertEqual((url.scheme, url.netloc), ("pulsedeck", "pair"))
+        self.assertEqual(query, {"v": "1", "name": "PC", "hosts": "192.168.1.5,10.0.0.2", "port": "8767",
+                                 "fp": "ABCD", "code": "123456"})
+        self.assertEqual(pairing_qr.png(text)[1:4], b"PNG")
+
     def test_media_session_or_none(self):
         self.assertIsNone(display_api.media_message(None)["session"])
         self.assertIsNone(display_api.media_message({"status": "stopped", "title": "x"})["session"])
@@ -120,12 +131,28 @@ class DisplaySocketTests(unittest.TestCase):
                 pong = await self.receive_until(ws, "pong")
                 return hello, metrics, media, error, pong
         hello, metrics, media, error, _ = self.run_client(scenario)
-        self.assertEqual((hello["protocol"], hello["commands"]), (1, ["next", "prev", "toggle"]))
+        self.assertEqual((hello["protocol"], hello["commands"]), (1, ["next", "prev", "seek", "toggle", "volume"]))
         self.assertIsNotNone(metrics["cpu"]["load"])
         self.assertTrue(metrics["disks"])
         self.assertEqual(media["session"]["title"], "After Dark")
         self.assertEqual(error["code"], "bad_command")
         self.assertEqual(self.commands, ["next"])          # the unknown command ran nothing
+
+    def test_seek_volume_and_interval_are_validated(self):
+        async def scenario(session, url, headers, ctx):
+            async with session.ws_connect(url, headers=headers, ssl=ctx) as ws:
+                await self.receive_until(ws, "hello")
+                await ws.send_json({"type": "subscribe", "interval": 0.01})       # clamped, no flood
+                await ws.send_json({"type": "command", "action": "seek", "value": 30})
+                await ws.send_json({"type": "command", "action": "seek", "value": "x"})
+                bad_seek = await self.receive_until(ws, "error")
+                await ws.send_json({"type": "command", "action": "volume", "value": 150})
+                bad_volume = await self.receive_until(ws, "error")
+                return bad_seek, bad_volume
+        bad_seek, bad_volume = self.run_client(scenario)
+        self.assertEqual(self.commands, ["seek"])
+        self.assertIn("секунд", bad_seek["message"])
+        self.assertIn("0 до 100", bad_volume["message"])
 
     def test_no_token_no_socket(self):
         async def scenario(session, url, headers, ctx):
