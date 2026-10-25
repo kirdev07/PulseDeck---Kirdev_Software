@@ -37,7 +37,12 @@ def main(argv=None):
     from pulse_pc.services.system.metrics import MetricsService
     from pulse_pc.ui.screens.registry import SCREENS
     from pulse_pc.ui.shell import MainWindow
-    context = AppContext(store=StateStore(), metrics=MetricsService())
+    import config
+    from pathlib import Path
+    from pulse_pc.core.logbook import Logbook
+    logbook = Logbook(Path(config.CONFIG_DIR) / "logs")
+    logbook.install()
+    context = AppContext(store=StateStore(), logbook=logbook, metrics=MetricsService())
     screens = SCREENS
     if "--gallery" in argv:
         from pulse_pc.ui.gallery import SCREENS_WITH_GALLERY
@@ -45,5 +50,6 @@ def main(argv=None):
     window = MainWindow(screens, context=context)
     context.metrics.start()
     app.aboutToQuit.connect(context.metrics.stop)
+    app.aboutToQuit.connect(logbook.close)
     window.show()
     return app.exec()
