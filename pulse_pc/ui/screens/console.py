@@ -3,7 +3,7 @@ an on-demand self-check."""
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QSize, Qt, QUrl, Signal
+from PySide6.QtCore import QObject, Qt, QUrl, Signal
 from PySide6.QtGui import QColor, QDesktopServices, QGuiApplication, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QButtonGroup, QFileDialog, QGridLayout, QHBoxLayout, QScrollArea, QLineEdit, QPlainTextEdit, QVBoxLayout, QWidget,

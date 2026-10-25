@@ -1,15 +1,11 @@
-"""Shared services for the Qt panel and Telegram commands."""
+"""Telegram helpers shared by the bot handlers and the panel: error texts, token check,
+file uploads with progress, PC summary."""
 import asyncio
-from collections import deque
-import logging
-from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 import re
-import threading
 import time
 from aiogram.types import FSInputFile
-from modules.background_io import FileIOExecutor
 from modules.transfer_history import track_transfer, record_transfer
 
 
@@ -17,28 +13,6 @@ def redact(text, token=""):
     text = re.sub(r"\b\d{5,}:[A-Za-z0-9_-]{15,}\b", "[TOKEN скрыт]", str(text))
     return text.replace(token, "[TOKEN скрыт]") if token else text
 
-
-class EventJournal:
-    def __init__(self, directory):
-        self.directory = Path(directory)
-        self.directory.mkdir(parents=True, exist_ok=True)
-        self.path = self.directory / "pulse.log"
-        self.handler = RotatingFileHandler(self.path, maxBytes=2_000_000, backupCount=3, encoding="utf-8", delay=True)
-        self.handler.setFormatter(logging.Formatter("%(message)s"))
-
-    def append(self, text):
-        self.handler.emit(logging.LogRecord("pulse.journal", logging.INFO, "", 0, redact(text), (), None))
-
-    def history(self, limit=2000):
-        lines = deque(maxlen=limit)
-        for path in [self.path.with_name(f"pulse.log.{n}") for n in (3, 2, 1)] + [self.path]:
-            if path.exists():
-                with path.open(encoding="utf-8", errors="replace") as stream:
-                    lines.extend(redact(line.rstrip()) for line in stream)
-        return list(lines)
-
-    def close(self):
-        self.handler.close()
 
 
 def telegram_error(exc):
@@ -248,46 +222,3 @@ def computer_info():
     lines.append("Батарея: отсутствует" if battery is None else f"Батарея: {battery.percent:.0f}% · " + ("питание от сети" if battery.power_plugged else "питание от батареи"))
     return "\n".join(lines)
 
-
-class AsyncJob:
-    """Cancellable coroutine worker; completion is delivered via a Qt signal."""
-    def __init__(self, factory, callback):
-        self.factory, self.callback = factory, callback
-        self.loop = self.task = None
-        self.cancelled = threading.Event()
-        self.thread = threading.Thread(target=self.run, daemon=True, name="PulsePC-job")
-
-    def start(self):
-        self.thread.start()
-
-    def cancel(self):
-        self.cancelled.set()
-        if self.loop and not self.loop.is_closed():
-            try:
-                self.loop.call_soon_threadsafe(self._cancel)
-            except RuntimeError:
-                pass
-
-    def _cancel(self):
-        if self.task:
-            self.task.cancel()
-
-    def run(self):
-        loop = self.loop = asyncio.new_event_loop()
-        loop.set_default_executor(FileIOExecutor())
-        asyncio.set_event_loop(loop)
-        result, error = None, None
-        try:
-            self.task = loop.create_task(self.factory())
-            if self.cancelled.is_set():
-                self.task.cancel()
-            result = loop.run_until_complete(self.task)
-        except asyncio.CancelledError:
-            error = "Операция отменена."
-        except Exception as exc:
-            error = telegram_error(exc)
-        finally:
-            loop.run_until_complete(loop.shutdown_asyncgens())
-            loop.run_until_complete(loop.shutdown_default_executor())
-            loop.close()
-            self.callback(result, error)

@@ -8,7 +8,7 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 from aiogram import Bot, Dispatcher
 from aiogram.types import Message, User, Update, CallbackQuery
@@ -335,9 +335,10 @@ class RoutingTests(TemporarySettings, unittest.IsolatedAsyncioTestCase):
 class OptionsEditorTests(TemporarySettings, unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        from test_qt_migration import WindowTests
-        WindowTests.setUpClass()
-        cls.app = WindowTests.app
+        import os
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from pulse_pc.app import create_application
+        cls.app = create_application([])
 
     def test_editor_saves_all_features_and_scenario_draft(self):
         from bot_options_ui import BotOptionsDialog

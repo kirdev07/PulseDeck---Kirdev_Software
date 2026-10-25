@@ -102,7 +102,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
             raise
         except ValueError as exc:
             return json_error(400, str(exc))
-        except Exception as exc:
+        except Exception:
             logger.exception("Local API error")
             return json_error(500, "Внутренняя ошибка сервера. Подробности сохранены в журнале Pulse PC.")
 

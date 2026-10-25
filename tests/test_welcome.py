@@ -1,12 +1,9 @@
 """Offline checks for the Telegram welcome and every main-menu entry point."""
-import importlib
 import unittest
 from datetime import datetime
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
-import config
-from bot_runtime import BotRunner
 from modules import welcome
 from modules.bot_preferences import validate_preferences
 
@@ -55,26 +52,6 @@ class WelcomeRouteTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(message.edit_text.await_args.args[0], "<b>Test panel</b>")
             callback.answer.assert_awaited_once()
 
-    async def test_startup_notification_uses_same_panel_and_closes_session(self):
-        from aiogram import Dispatcher
-        fake_bot = SimpleNamespace(me=AsyncMock(), send_message=AsyncMock(),
-                                   session=SimpleNamespace(middleware=Mock(), close=AsyncMock()))
-        runner = BotRunner(Mock(), Mock(), Mock(), Mock())
-        real_reload = importlib.reload
-        with patch.multiple(config, BOT_TOKEN="123456789:" + "A" * 35, ADMIN_ID=123456), \
-             patch("bot_runtime.importlib.reload", side_effect=lambda module: module if module is config else real_reload(module)), \
-             patch("aiogram.Bot", return_value=fake_bot), \
-             patch.object(Dispatcher, "start_polling", new=AsyncMock()), \
-             patch("modules.monitor.lock_monitor", new=AsyncMock()), \
-             patch("modules.utils.cleanup_old_files"), \
-             patch("modules.utils.should_send_startup_notification", return_value=True), \
-             patch.object(welcome, "control_panel_text", return_value="<b>Same panel</b>"):
-            await runner._main_async()
-        calls = fake_bot.send_message.await_args_list
-        self.assertEqual(len(calls), 2)
-        self.assertIn("Pulse PC на связи", calls[0].args[1])
-        self.assertEqual(calls[1].args[:2], (123456, "<b>Same panel</b>"))
-        fake_bot.session.close.assert_awaited_once()
 
 
 if __name__ == "__main__":

@@ -3,7 +3,7 @@ from collections import deque
 
 from PySide6.QtCore import Property, QEasingCurve, QPointF, QPropertyAnimation, QRectF, QSize, Qt, QVariantAnimation
 from PySide6.QtGui import QColor, QLinearGradient, QPainter, QPainterPath, QPen
-from PySide6.QtWidgets import QAbstractButton, QHBoxLayout, QLabel, QProgressBar, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QAbstractButton, QHBoxLayout, QLabel, QProgressBar, QSizePolicy, QWidget
 
 from pulse_pc.ui.components.basic import UNAVAILABLE, Card, label, set_kind
 

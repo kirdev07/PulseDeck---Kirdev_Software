@@ -3,7 +3,7 @@ import os
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QFileInfo, QObject, QSize, Qt, QTimer, QUrl, Signal
+from PySide6.QtCore import QFileInfo, QObject, QSize, Qt, QUrl, Signal
 from PySide6.QtGui import QAction, QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView, QButtonGroup, QDialog, QDialogButtonBox, QFileDialog, QFileIconProvider, QFormLayout,

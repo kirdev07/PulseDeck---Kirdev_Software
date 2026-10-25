@@ -4,15 +4,14 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, patch
 
 from aiogram import Bot, Dispatcher
-from aiogram.exceptions import TelegramNetworkError, TelegramUnauthorizedError
-from aiogram.methods import GetMe, GetUpdates
+from aiogram.exceptions import TelegramUnauthorizedError
+from aiogram.methods import GetMe
 from aiogram.types import Message, Update, User
 import config
-from bot_runtime import BotRunner
-from desktop_services import EventJournal, probe_bot, send_file, send_files_with_token, validate_upload, computer_info, telegram_error
+from desktop_services import probe_bot, send_file, send_files_with_token, validate_upload, computer_info, telegram_error
 
 
 class ServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -112,31 +111,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(finished, 2)
             bot.session.close.assert_awaited_once()
 
-    async def test_offline_start_retries_and_recovers(self):
-        statuses = []
-        runner = BotRunner(lambda text: None, statuses.append, lambda: None, lambda: None)
-        error = TelegramNetworkError(method=GetMe(), message="offline")
-        runner.bot = SimpleNamespace(me=AsyncMock(side_effect=[error, "connected"]))
-        with patch("bot_runtime.asyncio.sleep", new=AsyncMock()) as sleep:
-            self.assertEqual(await runner._connect(), "connected")
-        self.assertEqual(statuses, ["RECONNECTING"])
-        sleep.assert_awaited_once_with(2)
 
-    async def test_request_loss_recovery_and_bad_token(self):
-        statuses = []
-        runner = BotRunner(lambda text: None, statuses.append, lambda: None, lambda: None)
-        runner.is_running = True
-        method = GetUpdates()
-        error = TelegramNetworkError(method=method, message="offline")
-        request = AsyncMock(side_effect=[error, []])
-        with self.assertRaises(TelegramNetworkError):
-            await runner._request_status(request, None, method)
-        self.assertEqual(await runner._request_status(request, None, method), [])
-        self.assertEqual(statuses, ["RECONNECTING", "RUNNING"])
-        with self.assertRaises(TelegramUnauthorizedError):
-            await runner._request_status(AsyncMock(side_effect=TelegramUnauthorizedError(method=method, message="invalid")), None, method)
-        self.assertTrue(runner._stop.is_set())
-        self.assertEqual(statuses[-1], "STOPPING")
 
     async def test_probe_closes_session_on_success_and_error(self):
         bot = SimpleNamespace(get_me=AsyncMock(return_value=SimpleNamespace(full_name="Test", username="test_bot")), session=SimpleNamespace(close=AsyncMock()))
@@ -201,17 +176,6 @@ class DataTests(unittest.TestCase):
         self.assertIn("8.0 / 16.0", result)
         self.assertIn("отсутствует", result)
 
-    def test_rotated_journal_survives_reopen(self):
-        with tempfile.TemporaryDirectory() as directory:
-            journal = EventJournal(directory)
-            journal.handler.maxBytes = 50
-            journal.append("first " + "a" * 20)
-            journal.append("second " + "b" * 20)
-            journal.close()
-            journal = EventJournal(directory)
-            self.assertEqual(len(journal.history()), 2)
-            self.assertTrue(journal.path.with_name("pulse.log.1").exists())
-            journal.close()
 
     def test_program_callbacks_survive_reorder(self):
         from modules.program_handlers import program_index

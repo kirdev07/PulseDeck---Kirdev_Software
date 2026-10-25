@@ -193,6 +193,13 @@ class TelegramServiceTests(ServiceTestCase):
         self.assertTrue(wait_for(lambda: self.telegram_status() == st.STOPPED))
         self.assertIsNone(self.runtime.notifier.bot)
 
+    def test_startup_greeting_sends_the_shared_panel(self):
+        with mock.patch("modules.utils.should_send_startup_notification", lambda: True),                 mock.patch("modules.welcome.control_panel_text", return_value="<b>Same panel</b>"):
+            self.telegram().start().result(5)
+            self.assertTrue(wait_for(lambda: len(self.api.sent) >= 2))
+        self.assertIn("Pulse PC на связи", self.api.sent[0]["text"])
+        self.assertEqual((self.api.sent[1]["chat_id"], self.api.sent[1]["text"]), (str(ADMIN), "<b>Same panel</b>"))
+
     def test_stranger_is_refused_and_counted(self):
         bot = self.telegram()
         bot.start().result(5)

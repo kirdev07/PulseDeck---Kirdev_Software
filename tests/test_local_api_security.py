@@ -52,7 +52,6 @@ class LanOnlyTests(AioHTTPTestCase):
         return make_app()
 
     async def request_from(self, remote, path="/api/status", **kwargs):
-        from aiohttp.test_utils import make_mocked_request  # noqa: F401 - documents intent
         with patch("aiohttp.web_request.BaseRequest.remote", new=remote):
             return await self.client.request("GET", path, **kwargs)
 

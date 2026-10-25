@@ -2,7 +2,6 @@ import asyncio
 import json
 from pathlib import Path
 import tempfile
-import threading
 import subprocess
 import sys
 from types import SimpleNamespace
@@ -10,7 +9,7 @@ import unittest
 from unittest.mock import AsyncMock, Mock, patch
 
 import config
-from desktop_services import AsyncJob, telegram_error
+from desktop_services import telegram_error
 from modules import file_handlers, monitor, keyboards, program_handlers
 from modules.program_store import validate_programs, effective_process
 
@@ -122,22 +121,22 @@ class ProgramTests(unittest.IsolatedAsyncioTestCase):
 
 class CancellationTests(unittest.TestCase):
     def test_process_exits_while_os_worker_is_blocked(self):
+        """A file operation Windows cannot interrupt must not keep Pulse-PC from exiting."""
         code = """
 import asyncio, threading, time
-from desktop_services import AsyncJob
+from pulse_pc.services.runtime import Runtime
 entered = threading.Event()
-done = threading.Event()
 def blocked():
     entered.set()
     time.sleep(60)
-job = AsyncJob(lambda: asyncio.to_thread(blocked), lambda *_: done.set())
-job.start()
+runtime = Runtime()
+runtime.start()
+future = runtime.submit(asyncio.to_thread(blocked))
 assert entered.wait(3)
-job.cancel()
-assert done.wait(3)
-job.thread.join(1)
+future.cancel()
+runtime.stop(3)
 """
-        result = subprocess.run([sys.executable, "-c", code], capture_output=True, timeout=8)
+        result = subprocess.run([sys.executable, "-c", code], capture_output=True, timeout=12)
         self.assertEqual(result.returncode, 0, result.stderr.decode(errors="replace"))
 
     def test_legacy_shortcut_process_is_resolved(self):
@@ -146,22 +145,6 @@ job.thread.join(1)
             self.assertEqual(effective_process(dict(path="old.lnk", process="old.lnk")), "actual.exe")
         self.assertEqual(effective_process(dict(path="old.bat", process="old.bat")), "")
 
-    def test_cancel_does_not_wait_for_blocked_filesystem(self):
-        entered, release, completed = threading.Event(), threading.Event(), threading.Event()
-        def blocked():
-            entered.set()
-            release.wait(10)
-        job = AsyncJob(lambda: asyncio.to_thread(blocked), lambda result, error: completed.set())
-        try:
-            job.start()
-            self.assertTrue(entered.wait(2))
-            job.cancel()
-            self.assertTrue(completed.wait(3))
-            job.thread.join(1)
-            self.assertFalse(job.thread.is_alive())
-            self.assertFalse(release.is_set())
-        finally:
-            release.set()
 
     def test_file_errors_are_not_reported_as_telegram_network_errors(self):
         self.assertIn("доступ", telegram_error(PermissionError()))

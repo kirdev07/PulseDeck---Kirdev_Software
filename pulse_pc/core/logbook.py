@@ -22,7 +22,7 @@ _TOKEN = re.compile(r"\b\d{5,}:[A-Za-z0-9_-]{15,}\b")
 _LINE = re.compile(r"^\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]\s+(?:(DEBUG|INFO|WARNING|WARN|ERROR|CRITICAL)\s+)?(.*)$")
 _TELEGRAM = ("aiogram", "modules.advanced_handlers", "modules.file_handlers", "modules.keyboards",
              "modules.media_handlers", "modules.middleware", "modules.program_handlers", "modules.remote_tools",
-             "modules.system_handlers", "modules.bot_features", "modules.monitor", "bot_runtime", "pulse_pc.services.telegram")
+             "modules.system_handlers", "modules.bot_features", "modules.monitor", "pulse_pc.services.telegram")
 _PHONE = ("aiohttp", "modules.local_api", "modules.mobile_access", "pulse_pc.services.local_api")
 _APPS = ("modules.program_store", "pulse_pc.services.system.programs")
 
