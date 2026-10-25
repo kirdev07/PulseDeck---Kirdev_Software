@@ -58,7 +58,13 @@ class ServiceManager:
 
     def start(self, telegram=True):
         """Phone server always (if enabled in settings); Telegram when configured and wanted."""
+        from pulse_pc.core import state as st
         self.runtime.start()
+        if not self.runtime.loop:
+            reason = self.runtime.error or "Фоновая служба Pulse-PC не запустилась."
+            self.store.post("telegram", status=st.ERROR, error=reason)
+            self.store.post("phone", status=st.ERROR, error=reason)
+            return
         self.local_api.start()
         if telegram and self.telegram_configured():
             self.telegram.start()

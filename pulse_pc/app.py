@@ -31,6 +31,23 @@ def create_application(argv=None):
     return app
 
 
+def _log_uncaught_exceptions():
+    """The windowed build has no console: send crashes of any thread to the journal."""
+    import logging
+    import threading
+    log = logging.getLogger("pulse_pc.crash")
+
+    def main_hook(kind, value, trace):
+        log.critical("Необработанная ошибка", exc_info=(kind, value, trace))
+
+    def thread_hook(args):
+        if args.exc_type is not SystemExit:
+            log.critical("Необработанная ошибка в потоке %s", getattr(args.thread, "name", "?"),
+                         exc_info=(args.exc_type, args.exc_value, args.exc_traceback))
+    sys.excepthook = main_hook
+    threading.excepthook = thread_hook
+
+
 def main(argv=None):
     argv = sys.argv if argv is None else argv
     app = create_application(argv)
@@ -56,6 +73,7 @@ def main(argv=None):
 
     logbook = Logbook(config_dir / "logs")
     logbook.install()
+    _log_uncaught_exceptions()
     from pulse_pc.core import secrets
     try:
         if secrets.migrate_token(config_dir):

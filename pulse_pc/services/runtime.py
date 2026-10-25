@@ -34,6 +34,7 @@ class Runtime:
         self.loop = None
         self.thread = None
         self.features = None
+        self.error = ""             # why the runtime failed to start, if it did
         self.notifier = TelegramNotifier()
         self._ready = threading.Event()
 
@@ -54,7 +55,15 @@ class Runtime:
             from modules.bot_features import BotFeatures
             self.features = BotFeatures(self.notifier)
             self.features.start()
-        loop.run_until_complete(boot())
+        try:
+            loop.run_until_complete(boot())
+        except Exception as exc:
+            self.error = f"Фоновая служба не запустилась: {exc}"
+            logger.exception("Фоновая служба Pulse-PC не запустилась")
+            loop.close()
+            self.loop = None
+            self._ready.set()
+            return
         self._ready.set()
         try:
             loop.run_forever()
