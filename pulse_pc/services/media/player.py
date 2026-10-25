@@ -94,7 +94,7 @@ def publish_to_store(player, store):
         data = player_bridge.snapshot()
         store.update("player", status=data["status"] if data["active"] else "stopped", title=data["title"],
                      artist=data["artist"], position=round(data["position"], 1), duration=data["duration"],
-                     cover=data["cover"] or b"", source="Pulse-PC")
+                     cover=data["cover"] or b"", source="PulseDeck")
     player.changed.connect(push)
     push()
 

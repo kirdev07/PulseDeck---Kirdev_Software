@@ -1,4 +1,4 @@
-"""Pulse-PC Fusion 2.0."""
-APP_NAME = "Pulse-PC"
-EDITION = "FUSION 2.0"
-__version__ = "2.0.0-dev"
+"""PulseDeck — управление компьютером Windows с ПК, из Telegram и с телефона."""
+APP_NAME = "PulseDeck"
+__version__ = "1.0.0"
+EDITION = f"ВЕРСИЯ {__version__}"

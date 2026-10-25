@@ -121,7 +121,7 @@ class ProgramTests(unittest.IsolatedAsyncioTestCase):
 
 class CancellationTests(unittest.TestCase):
     def test_process_exits_while_os_worker_is_blocked(self):
-        """A file operation Windows cannot interrupt must not keep Pulse-PC from exiting."""
+        """A file operation Windows cannot interrupt must not keep PulseDeck from exiting."""
         code = """
 import asyncio, threading, time
 from pulse_pc.services.runtime import Runtime

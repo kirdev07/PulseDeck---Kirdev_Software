@@ -32,7 +32,7 @@ SECTIONS = (
     ("license", "Лицензия и компоненты", "info"),
     ("terms", "Условия использования", "info"),
     ("support", "Поддержка", "external"),
-    ("about", "О Pulse-PC", "pulse"),
+    ("about", "О PulseDeck", "pulse"),
 )
 
 
@@ -132,7 +132,7 @@ class SettingsScreen(QWidget):
         self.autostart = Toggle(autostart.is_enabled())
         self.autostart.toggled.connect(self.set_autostart)
         card.body.addLayout(setting_row("Запускать вместе с Windows",
-                                        "Pulse-PC стартует свёрнутым в трей после входа в систему.", self.autostart))
+                                        "PulseDeck стартует свёрнутым в трей после входа в систему.", self.autostart))
         card.body.addWidget(divider())
         self.animations = Toggle(self.ui.animations)
         self.animations.toggled.connect(self.set_animations)
@@ -223,14 +223,14 @@ class SettingsScreen(QWidget):
         layout.addWidget(card)
         data = Card("Данные на этом ПК")
         data.body.addWidget(label(f"Настройки, журнал и полученные файлы хранятся в {self.config_dir} "
-                                  f"и {config.FILES_DIR}. Pulse-PC не отправляет их разработчику.",
+                                  f"и {config.FILES_DIR}. PulseDeck не отправляет их разработчику.",
                                   "muted", wrap=True))
         data.body.addWidget(button("Открыть папку настроек", lambda: QDesktopServices.openUrl(
             QUrl.fromLocalFile(str(self.config_dir))), symbol="folder"))
         layout.addWidget(data)
 
     def _license(self, layout):
-        card = Card("Лицензия Pulse-PC")
+        card = Card("Лицензия PulseDeck")
         card.body.addWidget(document(ROOT / "LICENSE", "Файл LICENSE не найден."), 1)
         layout.addWidget(card)
         third = Card("Сторонние компоненты")
@@ -265,7 +265,7 @@ class SettingsScreen(QWidget):
         card = Card("Связаться с разработчиком")
         card.body.addWidget(label("Отправка обращений прямо из приложения через Telegram появится, когда будет готов "
                                   "сервер поддержки. Сейчас сообщите о проблеме на GitHub.", "muted", wrap=True))
-        card.body.addWidget(label("Перед отправкой уберите из журнала личные данные. Pulse-PC ничего не отправляет "
+        card.body.addWidget(label("Перед отправкой уберите из журнала личные данные. PulseDeck ничего не отправляет "
                                   "автоматически.", "caption", wrap=True))
         card.body.addWidget(button("Открыть Issues на GitHub", lambda: QDesktopServices.openUrl(
             QUrl(REPOSITORY + "/issues")), symbol="external"))

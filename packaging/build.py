@@ -1,6 +1,6 @@
 """Build the Windows installer: PyInstaller folder build, then Inno Setup.
 
-    .venv\\Scripts\\python packaging\\build.py            -> dist\\Pulse-PC-<version>-Setup.exe
+    .venv\\Scripts\\python packaging\\build.py            -> dist\\PulseDeck-<version>-Setup.exe
     .venv\\Scripts\\python packaging\\build.py --no-installer   (folder build only)
 
 Needs (development only, not shipped to users): PyInstaller in the venv and Inno Setup 6.
@@ -39,13 +39,13 @@ def size_mb(path):
 def main(argv):
     subprocess.run([sys.executable, "-m", "PyInstaller", str(ROOT / "packaging" / "pulse_pc.spec"), "--noconfirm",
                     "--distpath", str(DIST), "--workpath", str(WORK)], check=True, cwd=ROOT)
-    folder = DIST / "Pulse-PC"
+    folder = DIST / "PulseDeck"
     print(f"\nПапка программы: {folder} — {size_mb(folder):.0f} МБ")
     if "--no-installer" in argv:
         return 0
     subprocess.run([find_iscc(), f"/DAppVersion={VERSION}", f"/DSourceDir={folder}", f"/DOutputDir={DIST}",
                     str(ROOT / "packaging" / "installer.iss")], check=True, cwd=ROOT / "packaging")
-    setup = DIST / f"Pulse-PC-{VERSION}-Setup.exe"
+    setup = DIST / f"PulseDeck-{VERSION}-Setup.exe"
     print(f"Установщик: {setup} — {size_mb(setup):.1f} МБ")
     return 0
 

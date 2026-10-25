@@ -46,7 +46,7 @@ async def lock_monitor(bot):
                 pc_is_locked = locked
                 if locked != previous and (previous is not None or locked):
                     from modules import notify_bus
-                    notify_bus.push("Pulse PC", "Компьютер заблокирован." if locked else "Компьютер разблокирован.")
+                    notify_bus.push("PulseDeck", "Компьютер заблокирован." if locked else "Компьютер разблокирован.")
                 if locked != previous and config.ADMIN_ID and (previous is not None or locked):
                     if notification:
                         notification.cancel()

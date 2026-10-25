@@ -21,7 +21,7 @@ class Tray:
         self.status_action = QAction("", menu, enabled=False)
         menu.addAction(self.status_action)
         menu.addSeparator()
-        menu.addAction(QAction("Открыть Pulse-PC", menu, triggered=self.show_window))
+        menu.addAction(QAction("Открыть PulseDeck", menu, triggered=self.show_window))
         self.telegram_action = QAction("", menu, triggered=self.toggle_telegram)
         menu.addAction(self.telegram_action)
         menu.addSeparator()

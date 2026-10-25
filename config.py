@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 # Где лежит программа и где её данные.
 #   Запуск из исходников: данные рядом с кодом (config/, files/), как раньше.
 #   Установленная сборка (PyInstaller): программа в папке установки, а данные в
-#   %APPDATA%\Pulse-PC — они переживают обновление и удаление программы.
+#   %APPDATA%\PulseDeck — они переживают обновление и удаление программы.
 #   PULSE_PC_DATA_DIR переопределяет папку данных (переносная установка, тесты).
 FROZEN = getattr(sys, 'frozen', False)
 if FROZEN:
@@ -16,7 +16,7 @@ else:
     RESOURCE_DIR = APP_DIR
 
 DATA_DIR = os.environ.get("PULSE_PC_DATA_DIR") or (
-    os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "Pulse-PC") if FROZEN else APP_DIR)
+    os.path.join(os.environ.get("APPDATA") or os.path.expanduser("~"), "PulseDeck") if FROZEN else APP_DIR)
 CONFIG_DIR = os.path.join(DATA_DIR, "config")
 FILES_DIR = os.path.join(DATA_DIR, "files")      # received files
 os.makedirs(CONFIG_DIR, exist_ok=True)

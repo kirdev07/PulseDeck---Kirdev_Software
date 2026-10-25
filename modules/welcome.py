@@ -9,11 +9,11 @@ from modules.bot_preferences import load_preferences
 
 def welcome_text(first_name=None, *, startup=False):
     if startup:
-        return "🟣 <b>Pulse PC на связи</b>\nБот подключился к Telegram. Панель управления — ниже."
+        return "🟣 <b>PulseDeck на связи</b>\nБот подключился к Telegram. Панель управления — ниже."
     name = escape(str(first_name or ""))
     greeting = f"Привет, {name}!" if name else "Добро пожаловать!"
     custom = escape(load_preferences()["greeting"])
-    return f"🟣 <b>Pulse PC</b>\n{greeting}" + (f" {custom}" if custom else "")
+    return f"🟣 <b>PulseDeck</b>\n{greeting}" + (f" {custom}" if custom else "")
 
 
 def control_panel_text():

@@ -4,7 +4,7 @@
 def bring_to_front(hwnd):
     """Show a window on top and give it focus.
 
-    Windows lets only the foreground process take focus, so a background Pulse PC
+    Windows lets only the foreground process take focus, so a background PulseDeck
     first "taps" Alt and attaches to the foreground thread. Raises ValueError with a
     readable message instead of a raw pywin32 error.
     """

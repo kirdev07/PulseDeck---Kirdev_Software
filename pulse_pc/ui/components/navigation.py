@@ -51,7 +51,7 @@ class Sidebar(QFrame):
         brand.addWidget(logo)
         names = QVBoxLayout()
         names.setSpacing(0)
-        names.addWidget(label(APP_NAME.upper().replace("-", " "), "brand"))
+        names.addWidget(label(APP_NAME.upper(), "brand"))
         names.addWidget(label(EDITION, "edition"))
         brand.addLayout(names, 1)
         column.addLayout(brand)

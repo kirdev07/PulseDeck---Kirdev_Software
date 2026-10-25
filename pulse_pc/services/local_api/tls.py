@@ -39,8 +39,8 @@ def ensure_certificate(config_dir):
     folder.mkdir(parents=True, exist_ok=True)
     password = random.token_urlsafe(32)
     key = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"Pulse-PC {socket.gethostname()}"[:64]),
-                      x509.NameAttribute(NameOID.ORGANIZATION_NAME, "Pulse-PC")])
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"PulseDeck {socket.gethostname()}"[:64]),
+                      x509.NameAttribute(NameOID.ORGANIZATION_NAME, "PulseDeck")])
     now = datetime.datetime.now(datetime.timezone.utc)
     cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
             .serial_number(x509.random_serial_number())

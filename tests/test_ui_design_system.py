@@ -1,4 +1,4 @@
-"""Stage B: design system and navigation shell of Pulse-PC Fusion 2.0."""
+"""Stage B: design system and navigation shell of PulseDeck."""
 import os
 import sys
 import unittest

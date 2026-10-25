@@ -1,4 +1,4 @@
-"""LAN HTTP API for the Pulse PC mobile app (same actions as the Telegram bot).
+"""LAN HTTP API for the PulseDeck mobile app (same actions as the Telegram bot).
 
 Every request except /api/ping and /api/pair needs `Authorization: Bearer <token>`.
 Each phone gets its own token when the PC owner approves it (see mobile_access.py).
@@ -65,7 +65,7 @@ def ask_owner(text):
     MB_YESNO, MB_ICONQUESTION, MB_SETFOREGROUND, MB_TOPMOST = 0x4, 0x20, 0x10000, 0x40000
     IDYES = 6
     return ctypes.windll.user32.MessageBoxW(
-        0, text, "Pulse PC — новое устройство", MB_YESNO | MB_ICONQUESTION | MB_SETFOREGROUND | MB_TOPMOST) == IDYES
+        0, text, "PulseDeck — новое устройство", MB_YESNO | MB_ICONQUESTION | MB_SETFOREGROUND | MB_TOPMOST) == IDYES
 
 
 def make_app(features_getter=lambda: None, version=0, pairing=None):
@@ -84,7 +84,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
         # even with a valid token (e.g. after a port was forwarded on the router).
         if not is_private_ip(request.remote or ""):
             logger.warning("Отклонён запрос не из локальной сети: %s %s", request.remote, request.path)
-            return json_error(403, "Pulse-PC принимает запросы только из локальной сети.")
+            return json_error(403, "PulseDeck принимает запросы только из локальной сети.")
         path = request.path
         if version == 1 and path.startswith("/api/v1/"):
             path = "/api/" + path[len("/api/v1/"):]       # same rules for both versions
@@ -104,7 +104,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
             return json_error(400, str(exc))
         except Exception:
             logger.exception("Local API error")
-            return json_error(500, "Внутренняя ошибка сервера. Подробности сохранены в журнале Pulse PC.")
+            return json_error(500, "Внутренняя ошибка сервера. Подробности сохранены в журнале PulseDeck.")
 
     routes = web.RouteTableDef()
 
@@ -397,7 +397,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
     def own_player():
         """State of the built-in player in the same shape as a media session."""
         own = player_bridge.snapshot()
-        return {"id": "pulse", "source": "Pulse PC", "kind": "own", "title": own["title"], "artist": own["artist"],
+        return {"id": "pulse", "source": "PulseDeck", "kind": "own", "title": own["title"], "artist": own["artist"],
                 "album": own["album"], "status": own["status"], "position": own["position"],
                 "duration": own["duration"], "can_prev": True, "can_next": True,
                 "cover": own["cover_key"] if own["cover"] else "", "volume": own["volume"]}
@@ -430,7 +430,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
         items = await now_playing.sessions() if now_playing.AVAILABLE else []
         own = player_bridge.snapshot()
         if own["active"]:
-            items.insert(0, {"id": "pulse", "source": "Pulse PC", "kind": "own", "title": own["title"],
+            items.insert(0, {"id": "pulse", "source": "PulseDeck", "kind": "own", "title": own["title"],
                              "artist": own["artist"], "status": own["status"], "current": False})
         return web.json_response({"ok": True, "sessions": items})
 
@@ -458,7 +458,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
     async def player_open(request):
         path = str((await request.json()).get("path", ""))
         if not await asyncio.to_thread(player_bridge.is_library_track, path):
-            raise ValueError("Этого трека нет в библиотеке плеера Pulse PC.")
+            raise ValueError("Этого трека нет в библиотеке плеера PulseDeck.")
         player_bridge.send("open", path)
         return web.json_response({"ok": True})
 
@@ -480,7 +480,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
             player_bridge.send(cmd, value)
             return web.json_response({"ok": True})
         if cmd == "volume":
-            raise ValueError("Громкость плеера доступна только во встроенном плеере Pulse PC.")
+            raise ValueError("Громкость плеера доступна только во встроенном плеере PulseDeck.")
         handled = now_playing.AVAILABLE and await now_playing.command(cmd, value, source or None)
         if not handled and source:
             raise ValueError("Этот источник больше не играет.")
@@ -503,7 +503,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
     async def pair(request):
         # The phone asks to be added; the PC owner must approve it in a dialog.
         if not mobile_access.load()["allow_pairing"]:
-            return json_error(403, "Новые устройства отключены в настройках Pulse PC (вкладка «Телефон»).")
+            return json_error(403, "Новые устройства отключены в настройках PulseDeck (вкладка «Телефон»).")
         if not is_private_ip(request.remote or ""):
             return json_error(403, "Сопряжение доступно только из локальной сети.")
         if pairing_lock.locked():

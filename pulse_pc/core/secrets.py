@@ -24,7 +24,7 @@ class SecretError(Exception):
 
 def _protect(data: bytes) -> bytes:
     import win32crypt
-    return win32crypt.CryptProtectData(data, "Pulse-PC", _ENTROPY, None, None, _FLAGS)
+    return win32crypt.CryptProtectData(data, "PulseDeck", _ENTROPY, None, None, _FLAGS)
 
 
 def _unprotect(blob: bytes) -> bytes:

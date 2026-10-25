@@ -1,4 +1,4 @@
-# Pulse Mobile ↔ Pulse-PC: API v1 (TLS)
+# Pulse Mobile ↔ PulseDeck: API v1 (TLS)
 
 Статус: **реализовано на стороне ПК, ждёт поддержки в Pulse Mobile.** API v0 (HTTP) работает
 без изменений, пока в настройках ПК включён «Старый протокол без шифрования».

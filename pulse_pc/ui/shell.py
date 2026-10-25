@@ -75,7 +75,7 @@ class MainWindow(QMainWindow):
             self.hide()
             if not getattr(self, "_tray_hint_shown", False):
                 self._tray_hint_shown = True
-                tray.notify("Pulse-PC работает в фоне", "Откройте окно или выйдите через значок в трее.")
+                tray.notify("PulseDeck работает в фоне", "Откройте окно или выйдите через значок в трее.")
             return
         super().closeEvent(event)
         from PySide6.QtWidgets import QApplication

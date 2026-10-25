@@ -59,7 +59,7 @@ class Runtime:
             loop.run_until_complete(boot())
         except Exception as exc:
             self.error = f"Фоновая служба не запустилась: {exc}"
-            logger.exception("Фоновая служба Pulse-PC не запустилась")
+            logger.exception("Фоновая служба PulseDeck не запустилась")
             loop.close()
             self.loop = None
             self._ready.set()
@@ -81,7 +81,7 @@ class Runtime:
         """Run a coroutine on the runtime loop from any thread."""
         if not self.loop or not self.loop.is_running():
             coroutine.close()
-            raise RuntimeError("Фоновая служба Pulse-PC не запущена.")
+            raise RuntimeError("Фоновая служба PulseDeck не запущена.")
         return asyncio.run_coroutine_threadsafe(coroutine, self.loop)
 
     def stop(self, timeout=8.0):

@@ -197,7 +197,7 @@ class TelegramServiceTests(ServiceTestCase):
         with mock.patch("modules.utils.should_send_startup_notification", lambda: True),                 mock.patch("modules.welcome.control_panel_text", return_value="<b>Same panel</b>"):
             self.telegram().start().result(5)
             self.assertTrue(wait_for(lambda: len(self.api.sent) >= 2))
-        self.assertIn("Pulse PC на связи", self.api.sent[0]["text"])
+        self.assertIn("PulseDeck на связи", self.api.sent[0]["text"])
         self.assertEqual((self.api.sent[1]["chat_id"], self.api.sent[1]["text"]), (str(ADMIN), "<b>Same panel</b>"))
 
     def test_search_commands_and_links(self):

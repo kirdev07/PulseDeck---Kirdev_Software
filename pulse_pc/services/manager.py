@@ -13,7 +13,7 @@ LOCK_FILES = ("gui.lock", "bot.lock")   # the same files the classic panel locks
 
 
 class InstanceLock:
-    """Only one Pulse-PC panel (classic or new) may run: both would poll the same bot
+    """Only one PulseDeck panel (classic or new) may run: both would poll the same bot
     and bind the same ports."""
 
     def __init__(self, directory):
@@ -61,7 +61,7 @@ class ServiceManager:
         from pulse_pc.core import state as st
         self.runtime.start()
         if not self.runtime.loop:
-            reason = self.runtime.error or "Фоновая служба Pulse-PC не запустилась."
+            reason = self.runtime.error or "Фоновая служба PulseDeck не запустилась."
             self.store.post("telegram", status=st.ERROR, error=reason)
             self.store.post("phone", status=st.ERROR, error=reason)
             return

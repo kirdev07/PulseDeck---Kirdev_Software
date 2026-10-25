@@ -29,7 +29,7 @@ class AuthMiddleware(BaseMiddleware):
                 await event.answer(
                     f"⚠️ <b>В приложении не настроен ID администратора!</b>\n\n"
                     f"Ваш Telegram User ID: <code>{user_id}</code>\n\n"
-                    f"Скопируйте этот ID и вставьте его в настройки программы Pulse PC, чтобы получить доступ к управлению.",
+                    f"Скопируйте этот ID и вставьте его в настройки программы PulseDeck, чтобы получить доступ к управлению.",
                     parse_mode="HTML"
                 )
                 return

@@ -1,14 +1,15 @@
 """«Запускать вместе с Windows»: the HKCU Run entry.
 
-Installed build: runs Pulse-PC.exe --minimized. Source checkout: pythonw + PulsePC.pyw,
+Installed build: runs PulseDeck.exe --minimized. Source checkout: pythonw + PulsePC.pyw,
 which finds the project's .venv by itself."""
 import sys
 import winreg
 from pathlib import Path
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
-NAME = "PulsePC"
-NAMES = (NAME, "PulsePC_Bot")   # PulsePC_Bot: entry of very old versions
+NAME = "PulseDeck"
+LEGACY = ("PulsePC", "PulsePC_Bot")   # entries of the previous name (Pulse-PC / Pulse PC 1.x)
+NAMES = (NAME,) + LEGACY
 ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -38,7 +39,7 @@ def set_enabled(enable):
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
         if enable:
             winreg.SetValueEx(key, NAME, 0, winreg.REG_SZ, command())
-        for name in (("PulsePC_Bot",) if enable else NAMES):   # never start twice
+        for name in (LEGACY if enable else NAMES):   # never start twice
             try:
                 winreg.DeleteValue(key, name)
             except FileNotFoundError:

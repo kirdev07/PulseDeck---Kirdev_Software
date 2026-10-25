@@ -1,6 +1,6 @@
-"""Start Pulse-PC from the source code (double-click, no console).
+"""Start PulseDeck from the source code (double-click, no console).
 
-For users the installer (Pulse-PC-<version>-Setup.exe) is the normal way. This file stays
+For users the installer (PulseDeck-<version>-Setup.exe) is the normal way. This file stays
 for running from a checkout and for shortcuts and autostart entries created by 1.x: when
 the interpreter that opened it lacks the packages, it restarts itself with the project's
 .venv.
@@ -30,9 +30,9 @@ def main():
             return 0
         import ctypes
         ctypes.windll.user32.MessageBoxW(
-            0, "Не найдены библиотеки Pulse-PC.\n\nУстановите программу с помощью Pulse-PC-Setup.exe "
+            0, "Не найдены библиотеки PulseDeck.\n\nУстановите программу с помощью PulseDeck-Setup.exe "
                "или выполните в папке проекта:\npython -m venv .venv\n.venv\\Scripts\\pip install -r requirements.txt",
-            "Pulse-PC", 0x10)
+            "PulseDeck", 0x10)
         return 1
     sys.path.insert(0, str(ROOT))
     os.chdir(ROOT)

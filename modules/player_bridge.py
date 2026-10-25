@@ -72,5 +72,5 @@ def snapshot():
 
 def send(command, value=None):
     if CONTROLLER is None:
-        raise ValueError("Плеер Pulse PC недоступен: откройте приложение на ПК.")
+        raise ValueError("Плеер PulseDeck недоступен: откройте приложение на ПК.")
     CONTROLLER.command.emit(command, value)

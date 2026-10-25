@@ -68,7 +68,7 @@ def main(argv=None):
     config_dir = Path(config.CONFIG_DIR)
     lock = InstanceLock(config_dir)
     if not lock.acquire():
-        QMessageBox.information(None, APP_NAME, "Pulse-PC уже запущен. Откройте его через значок в системном трее.")
+        QMessageBox.information(None, APP_NAME, "PulseDeck уже запущен. Откройте его через значок в системном трее.")
         return 0
 
     logbook = Logbook(config_dir / "logs")

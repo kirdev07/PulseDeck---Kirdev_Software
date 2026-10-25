@@ -1,7 +1,7 @@
 name: Release installer
 
-# Builds Pulse-PC-<version>-Setup.exe and attaches it to a draft GitHub release.
-# Runs only for version tags (git tag v2.0.0 && git push origin v2.0.0) or by hand.
+# Builds PulseDeck-<version>-Setup.exe and attaches it to a draft GitHub release.
+# Runs only for version tags (git tag v1.0.0 && git push origin v1.0.0) or by hand.
 on:
   push:
     tags: ['v*']
@@ -35,16 +35,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $setup = Get-ChildItem dist\Pulse-PC-*-Setup.exe | Select-Object -First 1
+          $setup = Get-ChildItem dist\PulseDeck-*-Setup.exe | Select-Object -First 1
           gh release view "${{ github.ref_name }}" --repo "${{ github.repository }}" *> $null
           if ($LASTEXITCODE -eq 0) {
             gh release upload "${{ github.ref_name }}" $setup.FullName --clobber --repo "${{ github.repository }}"
           } else {
             gh release create "${{ github.ref_name }}" $setup.FullName --repo "${{ github.repository }}" `
-              --title "Pulse-PC ${{ github.ref_name }}" --draft `
+              --title "PulseDeck ${{ github.ref_name }}" --draft `
               --notes "Установщик для Windows 10/11 (64-бит), Python не нужен. См. README.md, PRIVACY_POLICY.md и docs/BUILD.md."
           }
       - uses: actions/upload-artifact@v4
         with:
-          name: Pulse-PC-Setup
-          path: dist/Pulse-PC-*-Setup.exe
+          name: PulseDeck-Setup
+          path: dist/PulseDeck-*-Setup.exe

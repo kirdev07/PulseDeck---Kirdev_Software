@@ -277,7 +277,7 @@ class BotFeatures:
                     snapshot = await asyncio.to_thread(alert_snapshot)
                     for event in evaluator.evaluate(settings, snapshot, time.monotonic()):
                         from modules import notify_bus
-                        notify_bus.push("Pulse PC", event)  # the phone shows it too
+                        notify_bus.push("PulseDeck", event)  # the phone shows it too
                         await self.bot.send_message(config.ADMIN_ID, "🔔 " + event, request_timeout=10)
                 else:
                     evaluator = AlertEvaluator()

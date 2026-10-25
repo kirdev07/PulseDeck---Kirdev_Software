@@ -1,4 +1,4 @@
-# PyInstaller spec for Pulse-PC (one folder: Pulse-PC.exe + _internal/).
+# PyInstaller spec for PulseDeck (one folder: PulseDeck.exe + _internal/).
 # Build: python packaging/build.py   (wraps PyInstaller and Inno Setup)
 import os
 from pathlib import Path
@@ -17,7 +17,7 @@ hidden = collect_submodules("modules") + collect_submodules("pulse_pc") + [
     "winrt.windows.foundation.collections", "pycaw.pycaw", "comtypes.stream",
 ]
 
-# Parts of Qt and Python that Pulse-PC never uses. Each one was checked with grep and by
+# Parts of Qt and Python that PulseDeck never uses. Each one was checked with grep and by
 # running the built app; see docs/BUILD.md for sizes.
 EXCLUDES = [
     # unittest stays: aiogram imports unittest.mock at start-up.
@@ -67,10 +67,10 @@ pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [],
     exclude_binaries=True,
-    name="Pulse-PC",
+    name="PulseDeck",
     icon=str(ROOT / "image" / "icon.ico"),
     console=False,
     version=str(ROOT / "packaging" / "version_info.txt"),
     upx=False,          # UPX-packed DLLs often trigger antivirus false positives
 )
-coll = COLLECT(exe, a.binaries, a.datas, name="Pulse-PC", upx=False)
+coll = COLLECT(exe, a.binaries, a.datas, name="PulseDeck", upx=False)

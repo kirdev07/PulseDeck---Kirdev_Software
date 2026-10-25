@@ -1,4 +1,4 @@
-"""Audio player of the Pulse PC window. Commands arrive from the window and from
+"""Audio player of the PulseDeck window. Commands arrive from the window and from
 the phone (through modules.player_bridge); playback state is published back."""
 from pathlib import Path
 

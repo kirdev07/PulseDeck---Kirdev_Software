@@ -126,7 +126,7 @@ class TelegramScreen(QWidget):
         self.autostart.toggled.connect(self.set_autostart)
         row = QHBoxLayout()
         text = QVBoxLayout()
-        text.addWidget(label("Запускать вместе с Pulse-PC"))
+        text.addWidget(label("Запускать вместе с PulseDeck"))
         text.addWidget(label("Если бот настроен, он стартует при запуске программы.", "caption", wrap=True))
         row.addLayout(text, 1)
         row.addWidget(self.autostart)

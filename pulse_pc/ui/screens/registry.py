@@ -26,7 +26,7 @@ def pending_screen(screen):
     column.setSpacing(tokens.SPACE_5)
     column.addWidget(PageHeader(screen.symbol, screen.title, screen.subtitle))
     column.addWidget(EmptyState(screen.symbol, "Экран ещё переносится",
-                                "Эта часть новой версии пока не готова. Все функции доступны в текущей панели Pulse-PC."), 1)
+                                "Эта часть новой версии пока не готова. Все функции доступны в текущей панели PulseDeck."), 1)
     return page
 
 

@@ -28,7 +28,7 @@ def _dotenv(path):
 
 def check_environment():
     bits = "64" if sys.maxsize > 2**32 else "32"
-    return OK, "Окружение", (f"Pulse-PC {__version__} · Python {platform.python_version()} ({bits} бит) · "
+    return OK, "Окружение", (f"PulseDeck {__version__} · Python {platform.python_version()} ({bits} бит) · "
                              f"{platform.system()} {platform.release()} ({platform.version()})")
 
 
@@ -93,12 +93,12 @@ def check_telegram_reachable(timeout=5):
 
 
 def check_port(port, kind=socket.SOCK_STREAM, title="Порт"):
-    """Free port -> OK; busy port -> WARN (may be Pulse-PC itself)."""
+    """Free port -> OK; busy port -> WARN (may be PulseDeck itself)."""
     sock = socket.socket(socket.AF_INET, kind)
     try:
         sock.bind(("0.0.0.0", port))
     except OSError:
-        return WARN, title, f"Порт {port} занят (это нормально, если сервер Pulse-PC уже запущен)."
+        return WARN, title, f"Порт {port} занят (это нормально, если сервер PulseDeck уже запущен)."
     finally:
         sock.close()
     return OK, title, f"Порт {port} свободен."

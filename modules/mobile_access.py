@@ -75,7 +75,7 @@ def add_device(name):
     with LOCK:
         data = load()
         if len(data["devices"]) >= MAX_DEVICES:
-            raise ValueError("Слишком много устройств. Отзовите ненужные в окне Pulse PC.")
+            raise ValueError("Слишком много устройств. Отзовите ненужные в окне PulseDeck.")
         token = secrets.token_urlsafe(24)
         data["devices"].append({
             "id": secrets.token_hex(6), "name": name[:40] or "Телефон", "hash": _hash(token),

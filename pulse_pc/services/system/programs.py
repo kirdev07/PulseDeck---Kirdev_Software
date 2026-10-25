@@ -145,7 +145,7 @@ def close(program):
             pass
     _, still = psutil.wait_procs(alive, timeout=2)
     if still:
-        raise PermissionError("Нет прав завершить процесс. Запустите Pulse-PC от имени администратора.")
+        raise PermissionError("Нет прав завершить процесс. Запустите PulseDeck от имени администратора.")
     return len(victims)
 
 

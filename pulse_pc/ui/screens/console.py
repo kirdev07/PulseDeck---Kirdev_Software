@@ -43,7 +43,7 @@ class ConsoleScreen(QWidget):
         column = QVBoxLayout(self)
         column.setContentsMargins(tokens.SPACE_5, tokens.SPACE_2, tokens.SPACE_5, tokens.SPACE_5)
         column.setSpacing(tokens.SPACE_4)
-        column.addWidget(PageHeader("console", "Консоль", "Журнал событий Pulse-PC, фильтры и диагностика."))
+        column.addWidget(PageHeader("console", "Консоль", "Журнал событий PulseDeck, фильтры и диагностика."))
         body = QHBoxLayout()
         body.setSpacing(tokens.SPACE_4)
         body.addWidget(self._log_card(), 3)
