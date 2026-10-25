@@ -22,8 +22,10 @@ class WireFormatTests(unittest.TestCase):
         snap = SimpleNamespace(cpu=12.345, gpu=None, gpu_name="", ram=50.0, ram_used=8, ram_total=16,
                                disks=[SimpleNamespace(mount="C:", used=60, total=100)])
         message = display_api.metrics_message(snap, {"C:": "Windows"})
-        self.assertEqual(message["cpu"], {"load": 12.3, "temp": None})
-        self.assertEqual(message["gpu"], {"load": None, "temp": None, "name": None})
+        self.assertEqual(message["cpu"], {"load": 12.3, "temp": None, "name": None, "cores": None})
+        self.assertEqual(message["gpu"], {"load": None, "temp": None, "name": None, "memory_total": None,
+                                          "memory_used": None})
+        self.assertEqual(message["net"], {"down": None, "up": None})
         self.assertEqual(message["disks"], [{"name": "C:", "label": "Windows", "total": 100, "free": 40}])
 
     def test_hardware_names_vram_and_network(self):

@@ -48,7 +48,7 @@ class MetricsTests(unittest.TestCase):
         sampler = MetricsSampler(gpu=NoGpu())
         snap = sampler.sample()
         self.assertIsNone(snap.gpu)
-        self.assertEqual(snap.gpu_name, "")
+        # The card name comes from the registry and stays known even without load counters.
         self.assertIsNotNone(snap.cpu)
         self.assertGreater(snap.ram_total, 0)
         self.assertIsNone(snap.net_down)  # rate needs two samples
