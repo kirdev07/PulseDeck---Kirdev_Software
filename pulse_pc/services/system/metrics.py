@@ -39,7 +39,9 @@ class Snapshot:
     ram_total: Optional[int] = None
     gpu: Optional[float] = None
     gpu_memory_used: Optional[int] = None
+    gpu_memory_total: Optional[int] = None
     gpu_name: str = ""
+    cpu_name: str = ""
     disks: list = field(default_factory=list)
     net_down: Optional[float] = None    # bytes per second
     net_up: Optional[float] = None
@@ -118,11 +120,12 @@ def aggregate_engines(values):
     return min(100.0, max(totals.values()))
 
 
-def gpu_name():
+def gpu_adapters():
+    """[(name, video memory bytes or None)] of real display adapters, from the registry."""
+    import winreg
+    key = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+    found = []
     try:
-        import winreg
-        key = r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
-        names = []
         with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key) as root:
             for index in range(winreg.QueryInfoKey(root)[0]):
                 sub = winreg.EnumKey(root, index)
@@ -130,11 +133,38 @@ def gpu_name():
                     continue
                 try:
                     with winreg.OpenKey(root, sub) as adapter:
-                        names.append(winreg.QueryValueEx(adapter, "DriverDesc")[0])
+                        name = winreg.QueryValueEx(adapter, "DriverDesc")[0]
+                        memory = None
+                        for value in ("HardwareInformation.qwMemorySize", "HardwareInformation.MemorySize"):
+                            try:
+                                raw = winreg.QueryValueEx(adapter, value)[0]
+                            except OSError:
+                                continue
+                            memory = raw if isinstance(raw, int) else int.from_bytes(raw[:8], "little")
+                            break
+                        found.append((name, memory))
                 except OSError:
                     continue
-        real = [n for n in names if "basic" not in n.lower() and "remote" not in n.lower()]
-        return (real or names or [""])[0]
+    except OSError:
+        return []
+    return [a for a in found if "basic" not in a[0].lower() and "remote" not in a[0].lower()] or found
+
+
+def main_gpu():
+    """The adapter with the most video memory (the discrete card in a laptop), or (\"\", None)."""
+    adapters = gpu_adapters()
+    return max(adapters, key=lambda a: a[1] or 0) if adapters else ("", None)
+
+
+def gpu_name():
+    return main_gpu()[0]
+
+
+def cpu_name():
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0") as key:
+            return " ".join(str(winreg.QueryValueEx(key, "ProcessorNameString")[0]).split())
     except OSError:
         return ""
 
@@ -173,14 +203,16 @@ class MetricsSampler:
     def __init__(self, gpu=None, clock=time.monotonic):
         self.clock = clock
         self.gpu = gpu if gpu is not None else GpuCounters()
-        self.gpu_name = gpu_name() if self.gpu.available else ""
+        self.gpu_name, self.gpu_memory_total = main_gpu()
+        self.cpu_name = cpu_name()
         self._net = None
         self._disks, self._disks_at = [], -1e9
         psutil.cpu_percent(None)  # first call primes the counter
 
     def sample(self):
         now = self.clock()
-        snap = Snapshot(time=now, gpu_name=self.gpu_name)
+        snap = Snapshot(time=now, gpu_name=self.gpu_name, gpu_memory_total=self.gpu_memory_total,
+                        cpu_name=self.cpu_name)
         snap.cpu = psutil.cpu_percent(None)
         snap.cpu_cores = psutil.cpu_count(logical=True)
         try:

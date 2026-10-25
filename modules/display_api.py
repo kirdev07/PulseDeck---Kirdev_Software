@@ -78,12 +78,36 @@ def metrics_message(snap, labels=None):
     labels = labels or {}
     return {
         "type": "metrics",
-        "cpu": {"load": _round(snap.cpu), "temp": None},
-        "gpu": {"load": _round(snap.gpu), "temp": None, "name": snap.gpu_name or None},
+        "cpu": {"load": _round(snap.cpu), "temp": None, "name": getattr(snap, "cpu_name", "") or None,
+                "cores": getattr(snap, "cpu_cores", None)},
+        # GPU load = busiest engine over all adapters (like Task Manager); name/memory = main card.
+        "gpu": {"load": _round(snap.gpu), "temp": None, "name": snap.gpu_name or None,
+                "memory_total": getattr(snap, "gpu_memory_total", None) or None,
+                "memory_used": getattr(snap, "gpu_memory_used", None)},
         "ram": {"percent": _round(snap.ram), "used": snap.ram_used, "total": snap.ram_total},
+        "net": {"down": _round(getattr(snap, "net_down", None), 0), "up": _round(getattr(snap, "net_up", None), 0)},
         "disks": [{"name": disk.mount, "label": labels.get(disk.mount, ""), "total": disk.total,
                    "free": max(0, disk.total - disk.used)} for disk in snap.disks],
     }
+
+
+_SOURCES = (
+    ("spotify", "Spotify"), ("yandex", "Яндекс Музыка"), ("zunemusic", "Медиаплеер"), ("zune", "Медиаплеер"),
+    ("wmplayer", "Проигрыватель Windows"), ("vlc", "VLC"), ("aimp", "AIMP"), ("foobar", "foobar2000"),
+    ("chrome", "Google Chrome"), ("msedge", "Microsoft Edge"), ("firefox", "Firefox"), ("opera", "Opera"),
+    ("brave", "Brave"), ("vivaldi", "Vivaldi"), ("telegram", "Telegram"), ("applemusic", "Apple Music"),
+    ("itunes", "iTunes"), ("deezer", "Deezer"), ("soundcloud", "SoundCloud"), ("pulsedeck", "PulseDeck"),
+)
+
+
+def source_name(source):
+    """«Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic» -> «Медиаплеер»."""
+    low = (source or "").lower()
+    for needle, name in _SOURCES:
+        if needle in low:
+            return name
+    tail = (source or "").split("!")[-1].split("\\")[-1]
+    return tail.rsplit(".", 1)[-1] if "." in tail and not tail.lower().endswith(".exe") else tail.removesuffix(".exe")
 
 
 def media_message(player):
@@ -97,7 +121,7 @@ def media_message(player):
         "status": player["status"],
         "position": _round(player.get("position") or 0.0),
         "duration": _round(player.get("duration") or 0.0),
-        "source": player.get("source") or "",
+        "source": source_name(player.get("source") or player.get("id") or ""),
         "cover": player.get("cover") or "",
         "can_prev": bool(player.get("can_prev", True)),
         "can_next": bool(player.get("can_next", True)),

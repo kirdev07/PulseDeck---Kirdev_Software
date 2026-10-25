@@ -37,11 +37,12 @@ def kind_of(app_id):
 
 
 async def _manager_():
+    """A fresh manager on every call: a cached one in a long-running process kept reporting
+    sessions of players that had already been closed. The request takes a few milliseconds."""
     global _manager
     if not AVAILABLE:
         return None
-    if _manager is None:
-        _manager = await SessionManager.request_async()
+    _manager = await SessionManager.request_async()
     return _manager
 
 

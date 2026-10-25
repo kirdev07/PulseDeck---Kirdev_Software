@@ -26,6 +26,21 @@ class WireFormatTests(unittest.TestCase):
         self.assertEqual(message["gpu"], {"load": None, "temp": None, "name": None})
         self.assertEqual(message["disks"], [{"name": "C:", "label": "Windows", "total": 100, "free": 40}])
 
+    def test_hardware_names_vram_and_network(self):
+        snap = SimpleNamespace(cpu=5.0, gpu=7.0, gpu_name="RTX", ram=1.0, ram_used=1, ram_total=2, disks=[],
+                               cpu_name="i5-13420H", cpu_cores=12, gpu_memory_total=6 << 30, gpu_memory_used=1 << 30,
+                               net_down=2048.4, net_up=None)
+        message = display_api.metrics_message(snap)
+        self.assertEqual((message["cpu"]["name"], message["cpu"]["cores"]), ("i5-13420H", 12))
+        self.assertEqual((message["gpu"]["memory_total"], message["gpu"]["memory_used"]), (6 << 30, 1 << 30))
+        self.assertEqual(message["net"], {"down": 2048.0, "up": None})
+
+    def test_source_names(self):
+        self.assertEqual(display_api.source_name("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic"), "Медиаплеер")
+        self.assertEqual(display_api.source_name("Spotify.exe"), "Spotify")
+        self.assertEqual(display_api.source_name("msedge"), "Microsoft Edge")
+        self.assertEqual(display_api.source_name("Some.Vendor_x!Player"), "Player")
+
     def test_media_session_or_none(self):
         self.assertIsNone(display_api.media_message(None)["session"])
         self.assertIsNone(display_api.media_message({"status": "stopped", "title": "x"})["session"])
