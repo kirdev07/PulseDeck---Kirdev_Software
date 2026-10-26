@@ -27,7 +27,7 @@ class DiagnosticsRunner(QObject):
         def target():
             self.finished.emit(diagnostics.run_all(
                 config.CONFIG_DIR, config.PROGRAMS_FILE_PATH, Path(config.CONFIG_DIR) / ".env"))
-        threading.Thread(target=target, daemon=True, name="PulsePC-diagnostics").start()
+        threading.Thread(target=target, daemon=True, name="PulseDeck-diagnostics").start()
 
 
 class ConsoleScreen(QWidget):
@@ -218,7 +218,7 @@ class ConsoleScreen(QWidget):
         return self.view.toPlainText()
 
     def export(self):
-        path, _ = QFileDialog.getSaveFileName(self, "Экспорт журнала", "pulse-pc-log.txt", "Текст (*.txt)")
+        path, _ = QFileDialog.getSaveFileName(self, "Экспорт журнала", "pulsedeck-log.txt", "Текст (*.txt)")
         if not path:
             return
         try:

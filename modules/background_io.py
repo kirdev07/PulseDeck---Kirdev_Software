@@ -39,7 +39,7 @@ class FileIOExecutor(ThreadPoolExecutor):
             if not self.io_threads:
                 for index in range(self.io_limit):
                     thread = threading.Thread(target=self.work, args=(self.io_queue,),
-                                              name=f"PulsePC-io-{index}", daemon=True)
+                                              name=f"PulseDeck-io-{index}", daemon=True)
                     thread.start()
                     self.io_threads.append(thread)
             future = Future()

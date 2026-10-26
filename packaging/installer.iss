@@ -69,7 +69,7 @@ Name: "{userdesktop}\PulseDeck"; Filename: "{app}\PulseDeck.exe"; Tasks: desktop
 [Registry]
 ; The same value the app writes from «Настройки → Запускать вместе с Windows».
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "PulseDeck"; ValueData: """{app}\PulseDeck.exe"" --minimized"; Tasks: autostart; Flags: uninsdeletevalue
-; Entries of the previous name (Pulse-PC / Pulse PC 1.x) would start the old program twice.
+; Autostart entries of version 1.x would start the old program twice.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "PulsePC"; Flags: deletevalue
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "PulsePC_Bot"; Flags: deletevalue
 

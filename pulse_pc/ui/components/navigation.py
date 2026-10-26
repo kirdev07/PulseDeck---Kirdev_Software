@@ -10,6 +10,7 @@ from pulse_pc import APP_NAME, EDITION, __version__
 from pulse_pc.ui.components.basic import button, label
 from pulse_pc.ui.components.indicators import StatusLine
 from pulse_pc.ui.theme import icon, tokens
+from pulse_pc.ui.theme.icons import logo_pixmap
 
 
 class NavItem(QPushButton):
@@ -47,7 +48,7 @@ class Sidebar(QFrame):
         brand.setContentsMargins(tokens.SPACE_2, 0, 0, tokens.SPACE_5)
         brand.setSpacing(tokens.SPACE_2)
         logo = QLabel()
-        logo.setPixmap(icon("pulse", tokens.TEXT).pixmap(QSize(26, 26), self.devicePixelRatioF()))
+        logo.setPixmap(logo_pixmap(30, self.devicePixelRatioF()))
         brand.addWidget(logo)
         names = QVBoxLayout()
         names.setSpacing(0)

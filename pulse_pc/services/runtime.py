@@ -42,7 +42,7 @@ class Runtime:
         if self.thread and self.thread.is_alive():
             return
         self._ready.clear()
-        self.thread = threading.Thread(target=self._run, daemon=True, name="PulsePC-runtime")
+        self.thread = threading.Thread(target=self._run, daemon=True, name="PulseDeck-runtime")
         self.thread.start()
         self._ready.wait(10)
 

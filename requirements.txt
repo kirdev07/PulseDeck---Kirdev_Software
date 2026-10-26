@@ -1,4 +1,4 @@
-# PulseDeck: нужные пакеты. Ставятся автоматически (install.bat или PulsePC.pyw).
+# PulseDeck: нужные пакеты. Ставятся автоматически (PulseDeck.pyw).
 PySide6>=6.6
 aiogram>=3.4,<4
 aiohttp>=3.9

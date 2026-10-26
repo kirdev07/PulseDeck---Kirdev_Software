@@ -13,7 +13,7 @@ from pathlib import Path
 
 FILE_NAME = "secrets.bin"
 PLACEHOLDER_TOKEN = "your_telegram_bot_token_here"
-_ENTROPY = b"Pulse-PC/secrets/v1"
+_ENTROPY = b"Pulse-PC/secrets/v1"   # fixed: changing it would make saved tokens undecryptable
 _FLAGS = 0x1            # CRYPTPROTECT_UI_FORBIDDEN
 _LOCK = threading.Lock()
 

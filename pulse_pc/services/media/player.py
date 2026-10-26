@@ -112,7 +112,7 @@ class LibraryScanner(QObject):
                 logger.warning("Не удалось прочитать библиотеку: %s", exc)
                 tracks = []
             self.scanned.emit(tracks)
-        threading.Thread(target=target, daemon=True, name="PulsePC-library").start()
+        threading.Thread(target=target, daemon=True, name="PulseDeck-library").start()
 
 
 class MediaSessions(QObject):
@@ -140,7 +140,7 @@ class MediaSessions(QObject):
         if self._thread and self._thread.is_alive():
             self._thread.join(2)
         self._stop.clear()
-        self._thread = threading.Thread(target=self._run, daemon=True, name="PulsePC-sessions")
+        self._thread = threading.Thread(target=self._run, daemon=True, name="PulseDeck-sessions")
         self._thread.start()
 
     def stop(self, wait=0.0):

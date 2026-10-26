@@ -105,3 +105,32 @@ def icon(name, color=tokens.TEXT_2):
 
 def pixmap(name, size, color=tokens.TEXT_2, ratio=1.0):
     return icon(name, color).pixmap(QSize(size, size), ratio)
+
+
+# The PulseDeck logo, the same mark as the PulseDesk and PulseDeck Panel launcher icons:
+# white pulse line on an AMOLED-black rounded square (108 × 108, as Android's adaptive icon).
+# image/icon.ico and image/logo.png are rendered from it by packaging/make_icons.py.
+LOGO_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">'
+            '<rect x="1" y="1" width="106" height="106" rx="24" fill="#000" stroke="#2C2C2C" stroke-width="2"/>'
+            '<path d="M24,54h12.5l8.5,-21 11.5,42 8.5,-21h19" fill="none" stroke="#FFF" stroke-width="6" '
+            'stroke-linecap="round" stroke-linejoin="round"/></svg>')
+
+
+def logo_pixmap(size, ratio=1.0):
+    side = round(size * ratio)
+    image = QPixmap(side, side)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    QSvgRenderer(QByteArray(LOGO_SVG.encode())).render(painter, QRectF(0, 0, side, side))
+    painter.end()
+    image.setDevicePixelRatio(ratio)
+    return image
+
+
+def app_icon():
+    """Window, taskbar and tray icon."""
+    result = QIcon()
+    for size in (16, 20, 24, 32, 40, 48, 64, 128, 256):
+        result.addPixmap(logo_pixmap(size))
+    return result

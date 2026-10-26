@@ -1,6 +1,6 @@
 """«Запускать вместе с Windows»: the HKCU Run entry.
 
-Installed build: runs PulseDeck.exe --minimized. Source checkout: pythonw + PulsePC.pyw,
+Installed build: runs PulseDeck.exe --minimized. Source checkout: pythonw + PulseDeck.pyw,
 which finds the project's .venv by itself."""
 import sys
 import winreg
@@ -8,7 +8,7 @@ from pathlib import Path
 
 RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 NAME = "PulseDeck"
-LEGACY = ("PulsePC", "PulsePC_Bot")   # entries of the previous name (Pulse-PC / Pulse PC 1.x)
+LEGACY = ("PulsePC", "PulsePC_Bot")   # autostart entries of version 1.x
 NAMES = (NAME,) + LEGACY
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -18,7 +18,7 @@ def command():
         return f'"{sys.executable}" --minimized'
     pythonw = Path(sys.executable).with_name("pythonw.exe")
     interpreter = pythonw if pythonw.exists() else Path(sys.executable)
-    return f'"{interpreter}" "{ROOT / "PulsePC.pyw"}" --minimized'
+    return f'"{interpreter}" "{ROOT / "PulseDeck.pyw"}" --minimized'
 
 
 def is_enabled():

@@ -20,6 +20,7 @@ from pulse_pc.core import settings as cfg
 from pulse_pc.services.system import autostart, components
 from pulse_pc.ui.components import Card, PageHeader, StatusLine, Toggle, button, divider, label
 from pulse_pc.ui.theme import icon, tokens
+from pulse_pc.ui.theme.icons import logo_pixmap
 
 ROOT = Path(config.RESOURCE_DIR)   # LICENSE, PRIVACY_POLICY.md … (bundled next to the code in builds)
 REPOSITORY = "https://github.com/kirdev07/PulseDeck---Kirdev_Software"
@@ -49,7 +50,7 @@ class TokenProbe(QObject):
                     self.finished.emit(False, telegram_error(exc))
             except Exception as exc:  # noqa: BLE001
                 self.finished.emit(False, str(exc))
-        threading.Thread(target=target, daemon=True, name="PulsePC-probe").start()
+        threading.Thread(target=target, daemon=True, name="PulseDeck-probe").start()
 
 
 def setting_row(title, description, control):
@@ -276,7 +277,7 @@ class SettingsScreen(QWidget):
         card = Card()
         row = QHBoxLayout()
         logo = label()
-        logo.setPixmap(icon("pulse", tokens.TEXT).pixmap(48, 48))
+        logo.setPixmap(logo_pixmap(56, logo.devicePixelRatioF()))
         row.addWidget(logo)
         names = QVBoxLayout()
         names.addWidget(label(APP_NAME, "title"))

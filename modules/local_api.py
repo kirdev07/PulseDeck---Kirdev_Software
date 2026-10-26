@@ -713,6 +713,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
 
 
 class DiscoveryProtocol(asyncio.DatagramProtocol):
+    # "PULSEPC?" / "app": "PulsePC" are protocol identifiers the phone apps look for; keep them.
     """Answers the phone's UDP broadcast "PULSEPC?" with this PC's name and port.
     With API v1 running the reply also has "tls_port" and "api" (extra keys; v0 clients ignore them)."""
     def __init__(self, port, tls_port=None):

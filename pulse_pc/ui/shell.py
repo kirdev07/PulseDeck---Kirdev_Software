@@ -6,7 +6,8 @@ from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QVBoxLayout, QWidget
 from pulse_pc import APP_NAME
 from pulse_pc.ui.components import FadeStack, Sidebar, TitleBar
 from pulse_pc.ui.screens.registry import SCREENS, pending_screen
-from pulse_pc.ui.theme import icon, tokens
+from pulse_pc.ui.theme import tokens
+from pulse_pc.ui.theme.icons import app_icon
 
 EDGE = 6  # px of the window border that resizes it
 
@@ -24,7 +25,7 @@ class MainWindow(QMainWindow):
         self.screens = {screen.key: screen for screen in screens}
         self.pages = {}
         self.setWindowTitle(APP_NAME)
-        self.setWindowIcon(icon("pulse", tokens.TEXT))
+        self.setWindowIcon(app_icon())
         self.setWindowFlag(Qt.WindowType.FramelessWindowHint)
         self.setMinimumSize(1040, 660)
         self.resize(1320, 820)

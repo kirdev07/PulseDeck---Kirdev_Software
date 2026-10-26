@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QApplication, QMenu, QSystemTrayIcon
 
 from pulse_pc import APP_NAME
 from pulse_pc.core import state as st
-from pulse_pc.ui.theme import icon, tokens
+from pulse_pc.ui.theme.icons import app_icon
 
 TELEGRAM_TEXT = {st.RUNNING: "работает", st.STARTING: "запуск…", st.RECONNECTING: "переподключение…",
                  st.ERROR: "ошибка", st.STOPPED: "остановлен", st.UNKNOWN: "—"}
@@ -15,7 +15,7 @@ class Tray:
         self.window = window
         self.context = context
         self.available = QSystemTrayIcon.isSystemTrayAvailable()
-        self.icon = QSystemTrayIcon(icon("pulse", tokens.TEXT), window)
+        self.icon = QSystemTrayIcon(app_icon(), window)
         self.icon.setToolTip(APP_NAME)
         menu = QMenu()
         self.status_action = QAction("", menu, enabled=False)

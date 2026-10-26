@@ -44,7 +44,7 @@ class UsageMonitor(QObject):
             self._thread.join(2)    # a stopped worker exits within one sample
         self._stop.clear()
         self._wake.clear()
-        self._thread = threading.Thread(target=self._run, name="PulsePC-apps", daemon=True)
+        self._thread = threading.Thread(target=self._run, name="PulseDeck-apps", daemon=True)
         self._thread.start()
 
     def stop(self):
@@ -77,7 +77,7 @@ class Worker(QObject):
                 self.done.emit(True, success)
             except Exception as exc:  # noqa: BLE001 - shown to the user
                 self.done.emit(False, str(exc))
-        threading.Thread(target=target, daemon=True, name="PulsePC-action").start()
+        threading.Thread(target=target, daemon=True, name="PulseDeck-action").start()
 
 
 class ProgramDialog(QDialog):
