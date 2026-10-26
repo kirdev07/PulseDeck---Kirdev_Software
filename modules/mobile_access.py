@@ -84,6 +84,25 @@ def add_device(name):
         return token
 
 
+ACCESS_FULL = "full"      # everything the API offers (default; devices paired before this setting)
+ACCESS_VIEW = "view"      # monitoring and now playing only: no commands, no files, no screenshots
+
+
+def can_control(device):
+    return (device or {}).get("access", ACCESS_FULL) == ACCESS_FULL
+
+
+def set_access(device_id, access):
+    if access not in (ACCESS_FULL, ACCESS_VIEW):
+        raise ValueError("Неизвестный уровень доступа.")
+    with LOCK:
+        data = load()
+        for device in data["devices"]:
+            if device.get("id") == device_id:
+                device["access"] = access
+        save(data)
+
+
 def remove_device(device_id):
     with LOCK:
         data = load()

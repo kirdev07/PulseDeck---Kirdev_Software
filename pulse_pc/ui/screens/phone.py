@@ -5,7 +5,7 @@ from datetime import datetime
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
-    QAbstractItemView, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QTableWidget, QTableWidgetItem,
+    QAbstractItemView, QComboBox, QGridLayout, QHBoxLayout, QHeaderView, QLabel, QMessageBox, QTableWidget, QTableWidgetItem,
     QVBoxLayout, QWidget,
 )
 
@@ -13,6 +13,9 @@ from modules import mobile_access
 from pulse_pc.core import state as st
 from pulse_pc.ui.components import Card, EmptyState, PageHeader, StatusLine, Toggle, button, divider, label, page_container
 from pulse_pc.ui.theme import icon, tokens
+
+# QR pairing is off for now: weak phone cameras could not read the code from a monitor.
+QR_ENABLED = False
 
 ONLINE_SECONDS = 120        # the app polls the PC every few seconds while open
 STATUS = {st.UNKNOWN: ("Нет данных", "off"), st.STOPPED: ("Сервер остановлен", "off"),
@@ -174,7 +177,7 @@ class PhoneScreen(QWidget):
             config_dir = getattr(getattr(self.services, "local_api", None), "config_dir", None)
             full = tls.fingerprint(config_dir) if config_dir else ""
             print_ = tls.short_fingerprint(full) if full else ""
-            if full and code != self._qr_code:                  # draw once per code, not every second
+            if QR_ENABLED and full and code != self._qr_code:   # draw once per code, not every second
                 from pulse_pc.services.local_api import pairing_qr
                 import socket
                 image = QPixmap()
@@ -182,7 +185,7 @@ class PhoneScreen(QWidget):
                     socket.gethostname(), list(state.addresses), state.tls_port, full, code)))
                 self.qr.setPixmap(image)
                 self._qr_code = code
-            self.qr.setVisible(bool(full))
+            self.qr.setVisible(QR_ENABLED and bool(full))
             self.code_detail.setText(f"Действует ещё {left} с · порт {state.tls_port}"
                                      + (f"\nОтпечаток: {print_}" if print_ else ""))
             self.code_button.setText("Отменить")
@@ -197,8 +200,8 @@ class PhoneScreen(QWidget):
     def _devices_card(self):
         card = Card("Подключённые устройства")
         self.devices_count = card.add_action(label("", "caption"))
-        self.devices = QTableWidget(0, 4)
-        self.devices.setHorizontalHeaderLabels(("Устройство", "Последняя связь", "Добавлено", ""))
+        self.devices = QTableWidget(0, 5)
+        self.devices.setHorizontalHeaderLabels(("Устройство", "Последняя связь", "Добавлено", "Доступ", ""))
         self.devices.verticalHeader().hide()
         self.devices.setShowGrid(False)
         self.devices.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -207,7 +210,7 @@ class PhoneScreen(QWidget):
         self.devices.setStyleSheet("QTableWidget { border: none; }")
         head = self.devices.horizontalHeader()
         head.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for index in (1, 2, 3):
+        for index in (1, 2, 3, 4):
             head.setSectionResizeMode(index, QHeaderView.ResizeMode.ResizeToContents)
         head.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         card.body.addWidget(self.devices)
@@ -284,8 +287,16 @@ class PhoneScreen(QWidget):
             self.devices.setItem(row, 1, seen)
             added = device.get("added", "")
             self.devices.setItem(row, 2, QTableWidgetItem(added.replace("T", " ")[:16] if added else "—"))
+            access = QComboBox()
+            access.addItem("Полный", mobile_access.ACCESS_FULL)
+            access.addItem("Только просмотр", mobile_access.ACCESS_VIEW)
+            access.setToolTip("«Только просмотр»: показатели и что играет, без управления, файлов и скриншотов.")
+            access.setCurrentIndex(0 if device.get("access", mobile_access.ACCESS_FULL) == mobile_access.ACCESS_FULL else 1)
+            access.currentIndexChanged.connect(
+                lambda _=0, d=device, box=access: self.services.local_api.set_access(d["id"], box.currentData()))
+            self.devices.setCellWidget(row, 3, access)
             revoke = button("Отозвать", lambda _=False, d=device: self.revoke(d), "ghost")
-            self.devices.setCellWidget(row, 3, revoke)
+            self.devices.setCellWidget(row, 4, revoke)
         has = bool(devices)
         self.devices.setVisible(has)
         self.devices_empty.setVisible(not has)

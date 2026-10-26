@@ -150,7 +150,7 @@ class PhoneScreenTests(ScreenTestCase):
         self.assertEqual(self.screen.devices.item(1, 1).text(), "ещё не подключался")
         from PySide6.QtWidgets import QMessageBox
         with mock.patch.object(QMessageBox, "question", return_value=QMessageBox.StandardButton.Yes):
-            self.screen.devices.cellWidget(1, 3).click()
+            self.screen.devices.cellWidget(1, 4).click()
         self.assertEqual(self.services.local_api.calls, [("revoke", "b")])
 
     def test_pairing_switch(self):

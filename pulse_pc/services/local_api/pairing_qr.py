@@ -18,8 +18,8 @@ def payload(name, hosts, port, fingerprint, code):
     return f"pulsedeck://pair?{query}"
 
 
-def png(text, scale=5):
-    """Black modules on white with the standard quiet zone: what every scanner reads best."""
+def png(text, scale=8):
+    """Black on white with the standard quiet zone; low error correction keeps modules big for weak cameras."""
     out = io.BytesIO()
-    segno.make(text, error="m").save(out, kind="png", scale=scale, border=4, dark="black", light="white")
+    segno.make(text, error="l").save(out, kind="png", scale=scale, border=4, dark="black", light="white")
     return out.getvalue()

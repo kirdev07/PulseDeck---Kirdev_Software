@@ -13,7 +13,8 @@ REFRESH_SECONDS = 5
 def public_devices(data):
     """Device records without token hashes, for the UI."""
     return tuple({"id": d.get("id", ""), "name": d.get("name", ""), "added": d.get("added", ""),
-                  "last_seen": d.get("last_seen", "")} for d in data["devices"])
+                  "last_seen": d.get("last_seen", ""),
+                  "access": d.get("access", mobile_access.ACCESS_FULL)} for d in data["devices"])
 
 
 class LocalApiService:
@@ -42,6 +43,11 @@ class LocalApiService:
         """Remove a phone's access; its token stops working on the next request."""
         mobile_access.remove_device(device_id)
         logger.info("Доступ телефона отозван.")
+        self._publish()
+
+    def set_access(self, device_id, access):
+        """Full control or view only; applies to the phone's next request (the panel within 5 s)."""
+        mobile_access.set_access(device_id, access)
         self._publish()
 
     def refresh(self):

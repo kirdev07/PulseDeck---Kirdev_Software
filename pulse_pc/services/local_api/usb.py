@@ -69,7 +69,12 @@ class UsbBridge:
         while True:
             try:
                 devices = set(await asyncio.to_thread(connected_devices, self.adb))
-                for serial in devices - self.forwarded:
+                for serial in devices:
+                    # Re-check every round: an adb restart or replug drops the mapping silently.
+                    _, mapped = await asyncio.to_thread(_run, self.adb, "-s", serial, "reverse", "--list")
+                    if f"tcp:{self.port} tcp:{self.port}" in mapped:
+                        self.forwarded.add(serial)
+                        continue
                     code, _ = await asyncio.to_thread(_run, self.adb, "-s", serial, "reverse",
                                                       f"tcp:{self.port}", f"tcp:{self.port}")
                     if code == 0:

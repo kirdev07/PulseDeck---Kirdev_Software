@@ -29,6 +29,8 @@ MAX_FILE_BYTES = 200 * 1024 * 1024
 # Read-only endpoints that still work while the PC is locked (phone notifications).
 # The panel (/api/display) keeps showing data while the PC is locked; it refuses commands itself.
 READ_WHEN_LOCKED = {"/api/status", "/api/events", "/api/player/state", "/api/player/cover", "/api/display"}
+# A «view only» phone gets exactly what is readable on a locked PC: monitoring and now playing.
+VIEW_ONLY_PATHS = READ_WHEN_LOCKED
 MEDIA_KEYS = {"prev": "prevtrack", "play": "playpause", "next": "nexttrack",
               "voldown": "volumedown", "volup": "volumeup", "mute": "volumemute"}
 
@@ -69,6 +71,81 @@ def ask_owner(text):
         0, text, "PulseDeck — новое устройство", MB_YESNO | MB_ICONQUESTION | MB_SETFOREGROUND | MB_TOPMOST) == IDYES
 
 
+def to_recycle_bin(path):
+    """Move a file or folder to the Windows Recycle Bin (SHFileOperation with FOF_ALLOWUNDO)."""
+    import ctypes
+    from ctypes import wintypes
+
+    class SHFILEOPSTRUCTW(ctypes.Structure):
+        _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", wintypes.LPCWSTR),
+                    ("pTo", wintypes.LPCWSTR), ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL),
+                    ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
+    FO_DELETE, FOF_SILENT, FOF_NOCONFIRMATION, FOF_ALLOWUNDO, FOF_NOERRORUI = 3, 0x4, 0x10, 0x40, 0x400
+    op = SHFILEOPSTRUCTW(wFunc=FO_DELETE, pFrom=str(path) + "\0",
+                         fFlags=FOF_SILENT | FOF_NOCONFIRMATION | FOF_ALLOWUNDO | FOF_NOERRORUI)
+    if ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)) != 0 or op.fAnyOperationsAborted:
+        raise ValueError("Не удалось переместить в корзину.")
+
+
+# Ending these breaks Windows or PulseDeck itself, so the phone may not.
+PROTECTED_PROCESSES = {"system", "idle", "registry", "smss.exe", "csrss.exe", "wininit.exe", "winlogon.exe",
+                       "services.exe", "lsass.exe", "svchost.exe", "dwm.exe", "fontdrvhost.exe", "memory compression"}
+
+
+def list_processes(limit=300):
+    """Processes with CPU (sampled over 0.3 s, % of the whole CPU) and memory, biggest first."""
+    import psutil
+    import time as _time
+    procs = []
+    for proc in psutil.process_iter(["pid", "name"]):
+        if proc.pid == 0:        # «System Idle Process»: idle time, not load
+            continue
+        try:
+            proc.cpu_percent(None)
+            procs.append(proc)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    _time.sleep(0.3)
+    cores = psutil.cpu_count() or 1
+    result = []
+    for proc in procs:
+        try:
+            with proc.oneshot():
+                name = proc.info["name"] or ""
+                result.append({"pid": proc.pid, "name": name,
+                               "cpu": round(proc.cpu_percent(None) / cores, 1),
+                               "memory": proc.memory_info().rss,
+                               "protected": is_protected(proc.pid, name)})
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass
+    result.sort(key=lambda p: (p["cpu"], p["memory"]), reverse=True)
+    return result[:limit]
+
+
+def is_protected(pid, name):
+    return pid <= 4 or pid == os.getpid() or (name or "").lower() in PROTECTED_PROCESSES
+
+
+def end_process(pid):
+    import psutil
+    if pid <= 4 or pid == os.getpid():
+        raise ValueError("Этот процесс завершать нельзя.")
+    try:
+        proc = psutil.Process(pid)
+        name = proc.name()
+        if name.lower() in PROTECTED_PROCESSES:
+            raise ValueError("Это системный процесс, его завершать нельзя.")
+        proc.terminate()
+        proc.wait(5)
+    except psutil.NoSuchProcess:
+        raise ValueError("Процесс уже завершён.")
+    except psutil.AccessDenied:
+        raise ValueError("Нет прав на завершение этого процесса.")
+    except psutil.TimeoutExpired:
+        raise ValueError("Процесс не завершился за 5 секунд.")
+    return name
+
+
 def make_app(features_getter=lambda: None, version=0, pairing=None):
     """version 0: the original HTTP API (/api/...). version 1: the same handlers under
     /api/v1/... for the TLS server, with code-based pairing and /api/v1/info."""
@@ -94,6 +171,8 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
             device = await asyncio.to_thread(mobile_access.authenticate, given[7:] if given.startswith("Bearer ") else "")
             if not device:
                 return json_error(401, "Устройство не подключено или отозвано.")
+            if not mobile_access.can_control(device) and (path not in VIEW_ONLY_PATHS or request.method != "GET"):
+                return json_error(403, "Этот телефон подключён только для просмотра. Доступ меняется в PulseDeck на ПК.")
             # Same rule as the Telegram bot: no control while the PC is locked.
             if path not in READ_WHEN_LOCKED and await asyncio.to_thread(workstation_locked):
                 return json_error(423, "ПК заблокирован. Управление недоступно.")
@@ -354,6 +433,67 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
             raise
         record_transfer(target, "incoming", "received")
         return web.json_response({"ok": True, "message": f"Сохранено на ПК: {target.name}"})
+
+    def target_path(raw, must_exist=True):
+        from pathlib import Path
+        if not raw:
+            raise ValueError("Не указан путь.")
+        path = Path(raw)
+        if not path.is_absolute():
+            raise ValueError("Нужен полный путь.")
+        path = path.resolve(strict=must_exist)
+        if path.parent == path:
+            raise ValueError("С корнем диска так нельзя.")
+        return path
+
+    def clean_name(name):
+        name = (name or "").strip()
+        if not name or name in (".", "..") or any(c in name for c in '<>:"/\\|?*') or len(name) > 200:
+            raise ValueError("Недопустимое имя.")
+        return name
+
+    @routes.post("/api/files/mkdir")
+    async def files_mkdir(request):
+        data = await request.json()
+        parent = target_path(data.get("path"))
+        if not parent.is_dir():
+            raise ValueError("Это не папка.")
+        folder = parent / clean_name(data.get("name"))
+        if folder.exists():
+            raise ValueError("Такое имя уже есть.")
+        await asyncio.to_thread(folder.mkdir)
+        return web.json_response({"ok": True, "path": str(folder)})
+
+    @routes.post("/api/files/rename")
+    async def files_rename(request):
+        data = await request.json()
+        source = target_path(data.get("path"))
+        target = source.with_name(clean_name(data.get("name")))
+        if target.exists():
+            raise ValueError("Такое имя уже есть.")
+        await asyncio.to_thread(source.rename, target)
+        return web.json_response({"ok": True, "path": str(target)})
+
+    @routes.post("/api/files/delete")
+    async def files_delete(request):
+        data = await request.json()
+        path = target_path(data.get("path"))
+        await asyncio.to_thread(to_recycle_bin, path)      # never a permanent delete from the phone
+        return web.json_response({"ok": True, "message": f"В корзине: {path.name}"})
+
+    # ---- Processes ----
+    @routes.get("/api/processes")
+    async def processes(_):
+        return web.json_response({"ok": True, "processes": await asyncio.to_thread(list_processes)})
+
+    @routes.post("/api/processes/{pid}/kill")
+    async def process_kill(request):
+        try:
+            pid = int(request.match_info["pid"])
+        except ValueError:
+            raise ValueError("Неверный PID.")
+        name = await asyncio.to_thread(end_process, pid)
+        return web.json_response({"ok": True, "message": f"Завершён: {name}"})
 
     @routes.get("/api/history")
     async def history(_):

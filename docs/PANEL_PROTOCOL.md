@@ -26,18 +26,19 @@ QR-код на ПК («Телефон» → «Подключить по коду
 
 ```json
 {"type": "hello", "protocol": 1, "app": "PulseDeck", "name": "DESKTOP-1",
- "metrics_interval": 1.5, "commands": ["next", "prev", "toggle"]}
+ "metrics_interval": 1.5, "commands": ["next", "prev", "seek", "toggle", "volume"]}
 ```
 
 Каждые 1,5 с:
 
 ```json
 {"type": "metrics",
- "cpu": {"load": 24.0, "temp": null, "name": "13th Gen Intel(R) Core(TM) i5-13420H", "cores": 12},
+ "cpu": {"load": 24.0, "temp": null, "name": "13th Gen Intel(R) Core(TM) i5-13420H", "cores": 12, "per_core": [12.5, 30.1]},
  "gpu": {"load": 38.0, "temp": null, "name": "NVIDIA GeForce RTX 3050 6GB Laptop GPU",
          "memory_total": 6442450944, "memory_used": 812000000},
  "ram": {"percent": 46.0, "used": 7900000000, "total": 17000000000},
  "net": {"down": 1250000, "up": 98000},
+ "uptime": 86400,
  "disks": [{"name": "C:", "label": "Windows", "total": 512000000000, "free": 312000000000}]}
 ```
 

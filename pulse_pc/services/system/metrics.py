@@ -35,6 +35,7 @@ class Snapshot:
     cpu: Optional[float] = None
     cpu_freq_mhz: Optional[float] = None
     cpu_cores: Optional[int] = None
+    cpu_per_core: list = field(default_factory=list)   # load of each logical core, %
     ram_used: Optional[int] = None
     ram_total: Optional[int] = None
     gpu: Optional[float] = None
@@ -208,6 +209,7 @@ class MetricsSampler:
         self._net = None
         self._disks, self._disks_at = [], -1e9
         psutil.cpu_percent(None)  # first call primes the counter
+        psutil.cpu_percent(None, percpu=True)
 
     def sample(self):
         now = self.clock()
@@ -215,6 +217,7 @@ class MetricsSampler:
                         cpu_name=self.cpu_name)
         snap.cpu = psutil.cpu_percent(None)
         snap.cpu_cores = psutil.cpu_count(logical=True)
+        snap.cpu_per_core = psutil.cpu_percent(None, percpu=True)
         try:
             freq = psutil.cpu_freq()
             snap.cpu_freq_mhz = freq.current if freq and freq.current else None

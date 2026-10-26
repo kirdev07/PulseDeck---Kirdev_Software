@@ -5,7 +5,7 @@ LAN peers only and a valid per-device token (pairing by code, revocable on the P
 Protocol: docs/PANEL_PROTOCOL.md.
 
 Server -> panel: hello, metrics (every METRICS_SECONDS), media (on change), error.
-Panel -> server: {"type": "command", "action": "toggle" | "next" | "prev"}, {"type": "ping"},
+Panel -> server: {"type": "command", "action": "toggle" | "next" | "prev" | "seek" | "volume"}, {"type": "ping"},
 {"type": "subscribe", "metrics": false} (the panel runs in the background: send media only).
 """
 import asyncio
@@ -81,13 +81,15 @@ def metrics_message(snap, labels=None):
     return {
         "type": "metrics",
         "cpu": {"load": _round(snap.cpu), "temp": None, "name": getattr(snap, "cpu_name", "") or None,
-                "cores": getattr(snap, "cpu_cores", None)},
+                "cores": getattr(snap, "cpu_cores", None),
+                "per_core": [_round(v) for v in getattr(snap, "cpu_per_core", None) or []]},
         # GPU load = busiest engine over all adapters (like Task Manager); name/memory = main card.
         "gpu": {"load": _round(snap.gpu), "temp": None, "name": snap.gpu_name or None,
                 "memory_total": getattr(snap, "gpu_memory_total", None) or None,
                 "memory_used": getattr(snap, "gpu_memory_used", None)},
         "ram": {"percent": _round(snap.ram), "used": snap.ram_used, "total": snap.ram_total},
         "net": {"down": _round(getattr(snap, "net_down", None), 0), "up": _round(getattr(snap, "net_up", None), 0)},
+        "uptime": _round(getattr(snap, "uptime", None), 0),
         "disks": [{"name": disk.mount, "label": labels.get(disk.mount, ""), "total": disk.total,
                    "free": max(0, disk.total - disk.used)} for disk in snap.disks],
     }
@@ -241,6 +243,8 @@ def add_display_route(app, current_player, control_player, workstation_locked):
                     action = data.get("action")
                     if action not in COMMANDS:      # only playback; nothing else can be run from the panel
                         await send({"type": "error", "code": "bad_command", "message": "Команда не поддерживается."})
+                    elif not mobile_access.can_control(await asyncio.to_thread(mobile_access.authenticate, token)):
+                        await send({"type": "error", "code": "view_only", "message": "Телефон подключён только для просмотра."})
                     elif await asyncio.to_thread(workstation_locked):
                         await send({"type": "error", "code": "locked", "message": "ПК заблокирован."})
                     else:
