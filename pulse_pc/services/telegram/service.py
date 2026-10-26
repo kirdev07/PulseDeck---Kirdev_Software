@@ -126,7 +126,7 @@ class TelegramService:
             raise FatalTelegramError("Токен имеет неверный формат. Скопируйте его из @BotFather целиком.") from exc
         self.bot = bot
         features = self.runtime.features
-        monitor_task = None
+        monitor_task = profiles = None
         try:
             bot.session.middleware(self._request_status)
             dp = Dispatcher()
@@ -143,6 +143,7 @@ class TelegramService:
 
             me = await self._connect(bot)
             self._post(bot_name=me.username or "", bot_title=me.full_name)
+            profiles = asyncio.create_task(self._load_profiles(bot, me.id, admin))
             if admin:
                 await self._startup_messages(bot, admin)
             else:
@@ -157,6 +158,9 @@ class TelegramService:
             raise FatalTelegramError(_UNAUTHORIZED) from exc
         finally:
             self.runtime.notifier.bot = None
+            if profiles:
+                profiles.cancel()
+                await asyncio.gather(profiles, return_exceptions=True)
             if monitor_task:
                 monitor_task.cancel()
                 await asyncio.gather(monitor_task, return_exceptions=True)
@@ -183,6 +187,41 @@ class TelegramService:
                 logger.warning("Нет связи с Telegram (%s). Повтор через %s с.", type(exc).__name__, delay)
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, 60)
+
+    async def _load_profiles(self, bot, bot_id, admin):
+        """Profile card: bot avatar and description, administrator's name and avatar.
+        Best effort: a missing photo or a network error leaves the card as it was."""
+        about = ""
+        try:
+            about = (await bot.get_my_short_description()).short_description or ""
+        except Exception:  # noqa: BLE001
+            pass
+        self._post(bot_photo=await self._avatar(bot, bot_id), bot_about=about)
+        if not admin:
+            self._post(admin_name="", admin_username="", admin_photo=b"")
+            return
+        try:
+            chat = await bot.get_chat(admin)
+        except Exception as exc:  # noqa: BLE001 - e.g. the admin never wrote to the bot
+            logger.info("Профиль администратора недоступен: %s", exc)
+            return
+        name = " ".join(part for part in (chat.first_name, chat.last_name) if part) or chat.title or ""
+        self._post(admin_name=name, admin_username=chat.username or "", admin_photo=await self._avatar(bot, admin))
+
+    @staticmethod
+    async def _avatar(bot, user_id):
+        """The current profile photo, 160 px (the smallest size above the card's 84 px), or b""."""
+        try:
+            photos = await bot.get_user_profile_photos(user_id, limit=1)
+            if not photos.photos:
+                return b""
+            sizes = sorted(photos.photos[0], key=lambda p: p.width)
+            size = next((p for p in sizes if p.width >= 160), sizes[-1])
+            data = await bot.download(size.file_id)
+            return data.read() if data else b""
+        except Exception as exc:  # noqa: BLE001
+            logger.info("Не удалось загрузить фото профиля: %s", exc)
+            return b""
 
     async def _startup_messages(self, bot, admin):
         from modules.keyboards import get_main_inline_keyboard, get_reply_keyboard

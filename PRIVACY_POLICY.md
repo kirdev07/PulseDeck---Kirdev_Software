@@ -106,4 +106,4 @@ Telegram-бота, никому не передавайте его токен и
 
 ## Контакты
 
-Проект и обновления этого документа: https://github.com/kirdev07/Pulse-PC
+Проект и обновления этого документа: https://github.com/kirdev07/PulseDeck---Kirdev_Software

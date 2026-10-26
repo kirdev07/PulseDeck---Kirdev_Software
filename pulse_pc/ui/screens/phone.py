@@ -63,7 +63,7 @@ class PhoneScreen(QWidget):
         grid.setVerticalSpacing(tokens.SPACE_4)
         grid.setColumnStretch(0, 3)
         grid.setColumnStretch(1, 2)
-        grid.addWidget(PageHeader("phone", "Телефон", "Pulse Mobile управляет этим ПК по домашней сети."), 0, 0, 1, 2)
+        grid.addWidget(PageHeader("phone", "Телефон", "PulseDesk и PulseDeck Panel на телефоне — по Wi-Fi или USB-кабелю."), 0, 0, 1, 2)
         grid.addWidget(self._server_card(), 1, 0)
         grid.addWidget(self._connect_card(), 1, 1)
         grid.addWidget(self._code_card(), 2, 1)
@@ -104,10 +104,10 @@ class PhoneScreen(QWidget):
     def _connect_card(self):
         card = Card("Как подключить телефон")
         for number, text in enumerate((
-                "Установите Pulse Mobile на Android.",
-                "Подключите телефон к той же Wi-Fi-сети, что и этот ПК.",
-                "В приложении нажмите «Найти ПК» — компьютер появится сам. Если нет, введите адрес слева вручную.",
-                "Подтвердите запрос в окне, которое появится на этом ПК."), 1):
+                "Установите на Android PulseDesk (управление) или PulseDeck Panel (второй экран).",
+                "Подключите телефон к той же Wi-Fi-сети или кабелем с «Отладкой по USB».",
+                "В приложении нажмите «Автопоиск в сети» — компьютер появится сам. Если нет, введите адрес слева.",
+                "Нажмите здесь «Показать код», сверьте отпечаток и введите 6 цифр на телефоне."), 1):
             row = QHBoxLayout()
             row.setSpacing(tokens.SPACE_3)
             badge = label(str(number), "caption")
@@ -254,7 +254,7 @@ class PhoneScreen(QWidget):
         if running:
             self.detail.setText("Телефоны в этой сети могут найти ПК и подключиться.")
         else:
-            self.detail.setText(value.error or ("Pulse Mobile не сможет подключиться, пока сервер остановлен."
+            self.detail.setText(value.error or ("Телефон не сможет подключиться, пока сервер остановлен."
                                                 if value.status == st.STOPPED else ""))
         while self.address_rows.count():
             widget = self.address_rows.takeAt(0).widget()

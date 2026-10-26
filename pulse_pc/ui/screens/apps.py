@@ -231,7 +231,7 @@ class AppsScreen(QWidget):
         self.table.customContextMenuRequested.connect(self._context_menu)
         card.body.addWidget(self.table, 1)
         self.empty = EmptyState("apps", "Пока нет программ",
-                                "Добавьте программу — она появится здесь, в меню Telegram и в Pulse Mobile.")
+                                "Добавьте программу — она появится здесь, в меню Telegram и в PulseDesk на телефоне.")
         card.body.addWidget(self.empty, 1)
         return card
 
@@ -452,7 +452,7 @@ class AppsScreen(QWidget):
                 dialog.show_error(str(exc))
                 continue
             self.reload(saved["id"])
-            self.show_message(f"Сохранено: {saved['name']}. Список уже доступен в Telegram и Pulse Mobile.")
+            self.show_message(f"Сохранено: {saved['name']}. Список уже доступен в Telegram и PulseDesk.")
             return
 
     def delete_selected(self):

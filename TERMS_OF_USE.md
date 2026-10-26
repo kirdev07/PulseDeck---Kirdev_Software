@@ -41,4 +41,4 @@ PulseDeck не отвечает за доступность Telegram и за о�
 ## 6. Изменения
 
 Новая редакция условий публикуется в репозитории проекта:
-https://github.com/kirdev07/Pulse-PC
+https://github.com/kirdev07/PulseDeck---Kirdev_Software

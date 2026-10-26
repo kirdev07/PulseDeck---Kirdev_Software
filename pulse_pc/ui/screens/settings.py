@@ -22,7 +22,7 @@ from pulse_pc.ui.components import Card, PageHeader, StatusLine, Toggle, button,
 from pulse_pc.ui.theme import icon, tokens
 
 ROOT = Path(config.RESOURCE_DIR)   # LICENSE, PRIVACY_POLICY.md … (bundled next to the code in builds)
-REPOSITORY = "https://github.com/kirdev07/Pulse-PC"
+REPOSITORY = "https://github.com/kirdev07/PulseDeck---Kirdev_Software"
 SECTIONS = (
     ("general", "Основные", "settings"),
     ("telegram", "Telegram Бот", "telegram"),
@@ -186,7 +186,7 @@ class SettingsScreen(QWidget):
         data = mobile_access.load()
         self.server_enabled = Toggle(data["enabled"])
         self.server_enabled.toggled.connect(lambda on: self.set_phone_option("enabled", on))
-        card.body.addLayout(setting_row("Сервер для Pulse Mobile",
+        card.body.addLayout(setting_row("Сервер для телефона",
                                         "Локальный сервер, через который телефон управляет ПК в домашней сети.",
                                         self.server_enabled))
         card.body.addWidget(divider())
@@ -199,8 +199,8 @@ class SettingsScreen(QWidget):
         self.legacy_http = Toggle(data["legacy_http"])
         self.legacy_http.toggled.connect(lambda on: self.set_phone_option("legacy_http", on))
         card.body.addLayout(setting_row("Старый протокол без шифрования",
-                                        "Нужен текущей версии Pulse Mobile. Выключите, когда все телефоны перейдут "
-                                        "на подключение по коду (TLS).", self.legacy_http))
+                                        "Нужен только старому приложению Pulse Mobile. PulseDesk и PulseDeck Panel подключаются "
+                                        "по коду (TLS) — его можно выключить.", self.legacy_http))
         card.body.addWidget(divider())
         card.body.addLayout(setting_row("Порты", "HTTP — старый протокол, TLS — защищённый, UDP — поиск ПК.",
                                         label(f"HTTP {data['port']} · TLS {data['tls_port']} · UDP "
@@ -387,7 +387,7 @@ class SettingsScreen(QWidget):
             ("ok" if not data["enabled"] or not data["legacy_http"] else "off",
              "Сервер для телефона выключен" if not data["enabled"]
              else "Телефоны подключаются только по защищённому протоколу (TLS)" if not data["legacy_http"]
-             else "Включён старый протокол без шифрования (HTTP) для текущей версии Pulse Mobile"),
+             else "Включён старый протокол без шифрования (HTTP) для старого приложения Pulse Mobile"),
             ("ok", "Сервер отвечает только устройствам локальной сети"),
             ("off" if data["allow_pairing"] else "ok",
              "Новые телефоны могут запросить подключение (с подтверждением на ПК)" if data["allow_pairing"]

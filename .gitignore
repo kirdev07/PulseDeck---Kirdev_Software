@@ -27,3 +27,6 @@ Pulse_Pc_Mobile/
 Pulse_Pc_Watch/
 PulseDeck-PanelAPP/
 PulseDeck-MobileAPP/
+
+# Local backups of replaced repositories
+*.bundle

@@ -22,6 +22,11 @@ class TelegramState:
     updates: int = 0            # Telegram updates handled since start
     denied: int = 0             # updates from users other than the administrator
     failures: int = 0           # handler errors since start
+    bot_photo: bytes = b""      # bot avatar (JPEG from Telegram), empty = none set
+    bot_about: str = ""         # short description from @BotFather
+    admin_name: str = ""        # administrator's Telegram profile, empty until loaded
+    admin_username: str = ""
+    admin_photo: bytes = b""
 
 
 @dataclass(frozen=True)

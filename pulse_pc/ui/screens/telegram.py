@@ -3,7 +3,9 @@ bot's part of the journal."""
 import time
 
 from PySide6.QtCore import QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QColor, QDesktopServices, QTextCharFormat, QTextCursor
+from PySide6.QtGui import (
+    QColor, QDesktopServices, QImage, QPainter, QPainterPath, QPixmap, QTextCharFormat, QTextCursor,
+)
 from PySide6.QtWidgets import (
     QFileDialog, QGridLayout, QHBoxLayout, QLabel, QPlainTextEdit, QProgressBar, QVBoxLayout, QWidget,
 )
@@ -76,14 +78,13 @@ class TelegramScreen(QWidget):
         card = Card()
         row = QHBoxLayout()
         row.setSpacing(tokens.SPACE_5)
-        badge = QLabel()
-        badge.setFixedSize(84, 84)
-        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        badge.setPixmap(icon("telegram", tokens.TEXT).pixmap(QSize(38, 38)))
-        badge.setStyleSheet(f"border: 1px solid {tokens.BORDER_STRONG}; border-radius: 42px; background: {tokens.SURFACE_2};")
-        row.addWidget(badge)
+        self.badge = _avatar_label(84)
+        row.addWidget(self.badge)
         text = QVBoxLayout()
         text.setSpacing(tokens.SPACE_1)
+        self.bot_heading = label("", "heading")
+        self.bot_heading.hide()
+        text.addWidget(self.bot_heading)
         self.status = StatusLine("", "off", "heading")
         self.detail = label("", "muted", wrap=True)
         text.addWidget(self.status)
@@ -96,8 +97,24 @@ class TelegramScreen(QWidget):
         actions.addStretch(1)
         text.addLayout(actions)
         row.addLayout(text, 1)
+        row.addLayout(self._owner(), 0)
         card.body.addLayout(row)
         return card
+
+    def _owner(self):
+        """Administrator's Telegram profile: avatar, name, @username."""
+        owner = QVBoxLayout()
+        owner.setSpacing(tokens.SPACE_1)
+        owner.addWidget(label("АДМИНИСТРАТОР", "caption"), 0, Qt.AlignmentFlag.AlignHCenter)
+        self.admin_avatar = _avatar_label(56)
+        owner.addWidget(self.admin_avatar, 0, Qt.AlignmentFlag.AlignHCenter)
+        self.admin_name = label("—", "")
+        self.admin_handle = label("", "caption")
+        for widget in (self.admin_name, self.admin_handle):
+            widget.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+            owner.addWidget(widget)
+        owner.addStretch(1)
+        return owner
 
     def _info_card(self):
         card = Card("Информация")
@@ -264,6 +281,18 @@ class TelegramScreen(QWidget):
         self.info["bot"].setText(f"@{value.bot_name}" if value.bot_name else "—")
         self.info["title"].setText(value.bot_title or "—")
         self.chat_button.setEnabled(bool(value.bot_name))
+        _set_avatar(self.badge, value.bot_photo, 84)
+        self.bot_heading.setText(value.bot_title)
+        self.bot_heading.setVisible(bool(value.bot_title))
+        if value.bot_about and value.status == st.RUNNING and not value.error:
+            self.detail.setText(f"{detail}\n{value.bot_about}" if detail else value.bot_about)
+        _set_avatar(self.admin_avatar, value.admin_photo, 56, "shield")
+        if value.admin_name or value.admin_username:
+            self.admin_name.setText(value.admin_name or f"@{value.admin_username}")
+            self.admin_handle.setText(f"@{value.admin_username}" if value.admin_username else "")
+        else:
+            self.admin_name.setText("—")
+            self.admin_handle.setText("после запуска бота")
         values = cfg.read_env(f"{self.config_dir}/.env")
         self.info["admin"].setText(values.get("ADMIN_ID") or "не задан")
         from pulse_pc.core.secrets import load_token
@@ -329,6 +358,38 @@ class TelegramScreen(QWidget):
         navigate = getattr(self.context, "navigate", None)
         if navigate:
             navigate(key)
+
+
+def _avatar_label(size):
+    badge = QLabel()
+    badge.setFixedSize(size, size)
+    badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+    badge.setStyleSheet(f"border: 1px solid {tokens.BORDER_STRONG}; border-radius: {size // 2}px; "
+                        f"background: {tokens.SURFACE_2};")
+    return badge
+
+
+def _set_avatar(badge, data, size, fallback="telegram"):
+    """Round photo from Telegram, or the placeholder icon when there is none."""
+    image = QImage.fromData(data) if data else QImage()
+    if image.isNull():
+        badge.setPixmap(icon(fallback, tokens.TEXT).pixmap(QSize(size * 9 // 20, size * 9 // 20)))
+        return
+    ratio = badge.devicePixelRatioF()
+    side = round(size * ratio)
+    scaled = QPixmap.fromImage(image).scaled(side, side, Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                                             Qt.TransformationMode.SmoothTransformation)
+    round_pix = QPixmap(side, side)
+    round_pix.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(round_pix)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    path = QPainterPath()
+    path.addEllipse(0, 0, side, side)
+    painter.setClipPath(path)
+    painter.drawPixmap((side - scaled.width()) // 2, (side - scaled.height()) // 2, scaled)
+    painter.end()
+    round_pix.setDevicePixelRatio(ratio)
+    badge.setPixmap(round_pix)
 
 
 def build(context):
