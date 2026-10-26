@@ -11,5 +11,6 @@ class AppContext:
     metrics: object = None            # services.system.metrics.MetricsService
     services: object = None           # services.manager.ServiceManager
     tray: object = None               # ui.tray.Tray when the system tray exists
+    updater: object = None            # services.updates.Updater
     window: object = None             # the main window, set by it
     navigate: Optional[Callable[[str], None]] = None   # set by the main window

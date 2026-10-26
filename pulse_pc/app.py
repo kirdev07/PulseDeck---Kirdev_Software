@@ -88,6 +88,8 @@ def main(argv=None):
     context = AppContext(store=store, logbook=logbook, metrics=MetricsService(), player=MusicPlayer(app),
                          services=services)
     publish_to_store(context.player, store)
+    from pulse_pc.services import updates
+    context.updater = updates.Updater(config_dir, app)
 
     screens = SCREENS
     if "--gallery" in argv:
@@ -100,6 +102,14 @@ def main(argv=None):
 
     context.metrics.start()
     services.start(telegram=ui.telegram_autostart)
+
+    if updates.installed_build():
+        def announce(state):
+            if state == updates.AVAILABLE and context.tray is not None:
+                context.tray.notify("Доступно обновление PulseDeck",
+                                    f"Версия {context.updater.release.version}. Установить: Настройки → Обновления.")
+        context.updater.changed.connect(announce, Qt.ConnectionType.QueuedConnection)
+        context.updater.check_automatically()
 
     def shutdown():
         context.metrics.stop()

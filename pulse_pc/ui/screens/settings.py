@@ -32,6 +32,7 @@ SECTIONS = (
     ("privacy", "Конфиденциальность", "info"),
     ("license", "Лицензия и компоненты", "info"),
     ("terms", "Условия использования", "info"),
+    ("updates", "Обновления", "refresh"),
     ("support", "Поддержка", "external"),
     ("about", "О PulseDeck", "pulse"),
 )
@@ -101,7 +102,7 @@ class SettingsScreen(QWidget):
         self.section_index = {}
         builders = {"general": self._general, "telegram": self._telegram, "phone": self._phone,
                     "security": self._security, "privacy": self._privacy, "license": self._license,
-                    "terms": self._terms,
+                    "terms": self._terms, "updates": self._updates,
                     "support": self._support, "about": self._about}
         for key, title, symbol in SECTIONS:
             self.nav.addItem(QListWidgetItem(icon(symbol, tokens.TEXT_2), title))
@@ -261,6 +262,71 @@ class SettingsScreen(QWidget):
         card = Card("Условия использования")
         card.body.addWidget(document(ROOT / "TERMS_OF_USE.md", "Файл TERMS_OF_USE.md не найден."), 1)
         layout.addWidget(card)
+
+    def _updates(self, layout):
+        from pulse_pc.services import updates
+        card = Card("Обновления")
+        self.update_status = label("", "", wrap=True)
+        self.update_notes = label("", "caption", wrap=True)
+        self.update_notes.hide()
+        card.body.addWidget(self.update_status)
+        card.body.addWidget(self.update_notes)
+        row = QHBoxLayout()
+        self.update_button = button("Проверить", self._update_action, "primary", "refresh")
+        row.addWidget(self.update_button)
+        row.addWidget(button("Все версии на GitHub", lambda: QDesktopServices.openUrl(QUrl(updates.RELEASES)),
+                             "ghost", "external"))
+        row.addStretch(1)
+        card.body.addLayout(row)
+        card.body.addWidget(label(f"PulseDeck проверяет GitHub при запуске, не чаще раза в {updates.AUTO_HOURS} ч. "
+                                  "Новая версия ставится поверх: настройки, токен и телефоны сохраняются, "
+                                  "программа перезапустится сама.", "caption", wrap=True))
+        layout.addWidget(card)
+        self.updater = getattr(self.context, "updater", None)
+        if self.updater is not None:
+            self.updater.changed.connect(self._show_update)
+        self._show_update()
+
+    def _update_action(self):
+        from pulse_pc.services import updates
+        if self.updater is None:
+            return
+        if self.updater.state == updates.AVAILABLE:
+            self.updater.download()
+        elif self.updater.state == updates.READY:
+            self.updater.install()
+        else:
+            self.updater.check()
+
+    def _show_update(self, *_):
+        from pulse_pc.services import updates
+        updater = self.updater
+        notes = ""
+        if updater is None or not updates.installed_build():
+            text, action = (f"Установлена версия {__version__}. Запуск из исходников обновляется через git pull; "
+                            "автообновление работает в установленной программе."), None
+        else:
+            state, release = updater.state, updater.release
+            text, action = {
+                updates.IDLE: (f"Установлена версия {__version__}.", "Проверить"),
+                updates.CHECKING: ("Проверяю обновления…", None),
+                updates.UP_TO_DATE: (f"Установлена последняя версия {__version__}.", "Проверить"),
+                updates.AVAILABLE: (f"Доступна версия {release.version if release else ''} (у вас {__version__}).",
+                                    "Скачать и установить"),
+                updates.DOWNLOADING: (f"Скачиваю {release.version if release else ''}: {round(updater.progress * 100)}%",
+                                      None),
+                updates.READY: ("Обновление скачано. PulseDeck закроется, установит новую версию и запустится снова.",
+                                "Установить и перезапустить"),
+                updates.FAILED: (updater.message, "Проверить"),
+            }[state]
+            if state == updates.AVAILABLE and release:
+                notes = release.notes[:600]
+        self.update_status.setText(text)
+        self.update_notes.setText(notes)
+        self.update_notes.setVisible(bool(notes))
+        self.update_button.setVisible(action is not None)
+        if action:
+            self.update_button.setText(action)
 
     def _support(self, layout):
         card = Card("Связаться с разработчиком")

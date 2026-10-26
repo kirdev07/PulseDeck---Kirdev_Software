@@ -75,6 +75,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: 
 
 [Run]
 Filename: "{app}\PulseDeck.exe"; Description: "Запустить PulseDeck"; Flags: nowait postinstall skipifsilent
+; Update from inside PulseDeck (silent install): start the new version again.
+Filename: "{app}\PulseDeck.exe"; Flags: nowait; Check: WizardSilent
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/IM PulseDeck.exe /F"; Flags: runhidden; RunOnceId: "StopPulseDeck"
