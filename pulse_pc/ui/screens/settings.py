@@ -302,7 +302,10 @@ class SettingsScreen(QWidget):
         from pulse_pc.services import updates
         updater = self.updater
         notes = ""
-        if updater is None or not updates.installed_build():
+        if updates.portable_build():
+            text, action = (f"Портативная версия {__version__}. Чтобы обновиться, скачайте новый ZIP со страницы "
+                            "«Все версии на GitHub» и распакуйте поверх этой папки."), None
+        elif updater is None or not updates.installed_build():
             text, action = (f"Установлена версия {__version__}. Запуск из исходников обновляется через git pull; "
                             "автообновление работает в установленной программе."), None
         else:

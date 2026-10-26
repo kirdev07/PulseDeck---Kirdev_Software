@@ -82,10 +82,15 @@
 
 ## Установка
 
-1. Скачайте **`PulseDeck-1.0.0-Setup.exe`** со страницы
-   **[Releases](https://github.com/kirdev07/PulseDeck---Kirdev_Software/releases/latest)**.
-2. Запустите. Права администратора не нужны: программа ставится для текущего пользователя.
-3. Настройте Telegram-бота и подключите телефон.
+**Одной командой** (PowerShell, без предупреждений Windows):
+
+```powershell
+irm https://raw.githubusercontent.com/kirdev07/PulseDeck---Kirdev_Software/main/install.ps1 | iex
+```
+
+**Или вручную** со страницы **[Releases](https://github.com/kirdev07/PulseDeck---Kirdev_Software/releases/latest)**:
+**`PulseDeck-1.0.0-Setup.exe`** — установщик, **`PulseDeck-1.0.0-Portable.zip`** — портативная версия
+без установки. Права администратора не нужны.
 
 Дальше PulseDeck **обновляется сам** с GitHub: уведомление в трее, затем **Настройки → Обновления** —
 одна кнопка, и новая версия ставится поверх с сохранением настроек.

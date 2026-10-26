@@ -21,7 +21,8 @@ from PySide6.QtCore import QObject, Signal
 from pulse_pc import __version__
 
 REPO = "kirdev07/PulseDeck---Kirdev_Software"
-LATEST = f"https://api.github.com/repos/{REPO}/releases/latest"
+# PULSEDECK_UPDATE_URL points the check at a test server (end-to-end test of the update).
+LATEST = os.environ.get("PULSEDECK_UPDATE_URL") or f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES = f"https://github.com/{REPO}/releases/latest"
 AUTO_HOURS = 6
 TIMEOUT = 20
@@ -73,8 +74,13 @@ def plain(markdown):
 
 
 def installed_build():
-    """Updates replace the installed program; a source checkout updates with git."""
-    return bool(getattr(sys, "frozen", False))
+    """Updates replace the installed program; a source checkout updates with git and the
+    portable ZIP (no uninstaller next to the exe) by downloading a new ZIP."""
+    return bool(getattr(sys, "frozen", False)) and (Path(sys.executable).parent / "unins000.exe").is_file()
+
+
+def portable_build():
+    return bool(getattr(sys, "frozen", False)) and not installed_build()
 
 
 class Updater(QObject):
