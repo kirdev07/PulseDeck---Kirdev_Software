@@ -278,7 +278,7 @@ class SettingsScreen(QWidget):
                              "ghost", "external"))
         row.addStretch(1)
         card.body.addLayout(row)
-        card.body.addWidget(label(f"PulseDeck проверяет GitHub при запуске, не чаще раза в {updates.AUTO_HOURS} ч. "
+        card.body.addWidget(label(f"PulseDeck проверяет GitHub при запуске и каждые {updates.AUTO_HOURS} ч, новую версию скачивает сам и предлагает установить. "
                                   "Новая версия ставится поверх: настройки, токен и телефоны сохраняются, "
                                   "программа перезапустится сама.", "caption", wrap=True))
         layout.addWidget(card)

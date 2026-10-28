@@ -24,7 +24,8 @@ REPO = "kirdev07/PulseDeck---Kirdev_Software"
 # PULSEDECK_UPDATE_URL points the check at a test server (end-to-end test of the update).
 LATEST = os.environ.get("PULSEDECK_UPDATE_URL") or f"https://api.github.com/repos/{REPO}/releases/latest"
 RELEASES = f"https://github.com/{REPO}/releases/latest"
-AUTO_HOURS = 6
+AUTO_HOURS = 6         # re-check while the program stays open
+THROTTLE_HOURS = 1     # restarts within an hour do not ask GitHub again
 TIMEOUT = 20
 
 IDLE, CHECKING, UP_TO_DATE, AVAILABLE, DOWNLOADING, READY, FAILED = (
@@ -94,21 +95,26 @@ class Updater(QObject):
         self.progress = 0.0
         self.message = ""
         self.file = None
+        self.automatic = False      # set by check_automatically: app.py downloads and asks by itself
         self._busy = False
 
     # ----- checking -----
     def check_automatically(self):
-        """At most once per AUTO_HOURS, in the background, on program start."""
+        """On every program start and every AUTO_HOURS while it runs (at most once per
+        THROTTLE_HOURS across restarts). A found version is downloaded right away (app.py)."""
+        if self.state in (DOWNLOADING, READY):
+            return
         try:
             last = json.loads(self.stamp.read_text(encoding="utf-8")).get("time", 0)
         except (OSError, ValueError):
             last = 0
-        if time.time() - last >= AUTO_HOURS * 3600:
-            self.check()
+        if time.time() - last >= THROTTLE_HOURS * 3600:
+            self.check(automatic=True)
 
-    def check(self):
+    def check(self, automatic=False):
         if self._busy:
             return
+        self.automatic = automatic
         self._busy = True
         self._set(CHECKING)
         threading.Thread(target=self._check, daemon=True, name="PulseDeck-updates").start()

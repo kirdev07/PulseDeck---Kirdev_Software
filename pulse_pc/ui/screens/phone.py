@@ -15,7 +15,7 @@ from pulse_pc.ui.components import Card, EmptyState, PageHeader, StatusLine, Tog
 from pulse_pc.ui.theme import icon, tokens
 
 # QR pairing is off for now: weak phone cameras could not read the code from a monitor.
-QR_ENABLED = False
+QR_ENABLED = True
 
 ONLINE_SECONDS = 120        # the app polls the PC every few seconds while open
 STATUS = {st.UNKNOWN: ("Нет данных", "off"), st.STOPPED: ("Сервер остановлен", "off"),
@@ -107,7 +107,7 @@ class PhoneScreen(QWidget):
                 "Установите на Android PulseDesk (управление) или PulseDeck Panel (второй экран).",
                 "Подключите телефон к той же Wi-Fi-сети или кабелем с «Отладкой по USB».",
                 "В приложении нажмите «Автопоиск в сети» — компьютер появится сам. Если нет, введите адрес слева.",
-                "Нажмите здесь «Показать код», сверьте отпечаток и введите 6 цифр на телефоне."), 1):
+                "Нажмите здесь «Показать код» и отсканируйте QR-код телефоном — или введите 6 цифр, сверив отпечаток."), 1):
             row = QHBoxLayout()
             row.setSpacing(tokens.SPACE_3)
             badge = label(str(number), "caption")
@@ -132,7 +132,7 @@ class PhoneScreen(QWidget):
 
     def _code_card(self):
         card = Card("Подключить по коду")
-        card.body.addWidget(label("Защищённое подключение (TLS): отсканируйте QR-код в PulseDeck Panel или введите "
+        card.body.addWidget(label("Защищённое подключение (TLS): отсканируйте QR-код в PulseDesk или PulseDeck Panel либо введите "
                                   "код на телефоне и сверьте отпечаток.", "caption", wrap=True))
         self.qr = QLabel()
         self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)

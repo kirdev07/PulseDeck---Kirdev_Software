@@ -6,7 +6,7 @@ the same files, so only one of them can run at a time.
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QFont, QGuiApplication
 from PySide6.QtWidgets import QApplication, QMessageBox
 
@@ -104,12 +104,23 @@ def main(argv=None):
     services.start(telegram=ui.telegram_autostart)
 
     if updates.installed_build():
-        def announce(state):
-            if state == updates.AVAILABLE and context.tray is not None:
-                context.tray.notify("Доступно обновление PulseDeck",
-                                    f"Версия {context.updater.release.version}. Установить: Настройки → Обновления.")
-        context.updater.changed.connect(announce, Qt.ConnectionType.QueuedConnection)
+        # A new version is downloaded at once; when it is ready the user is asked to install.
+        def on_update(state):
+            updater = context.updater
+            if state == updates.AVAILABLE and updater.automatic:
+                if context.tray is not None:
+                    context.tray.notify("Обновление PulseDeck",
+                                        f"Скачиваю версию {updater.release.version}…")
+                updater.download()
+            elif state == updates.READY and updater.automatic:
+                updater.automatic = False
+                from pulse_pc.ui.update_prompt import ask_to_install
+                ask_to_install(window, updater)
+        context.updater.changed.connect(on_update, Qt.ConnectionType.QueuedConnection)
         context.updater.check_automatically()
+        # The program runs for days: look again while it is open.
+        update_timer = QTimer(app, interval=updates.AUTO_HOURS * 3600 * 1000, timeout=context.updater.check_automatically)
+        update_timer.start()
 
     def shutdown():
         context.metrics.stop()
