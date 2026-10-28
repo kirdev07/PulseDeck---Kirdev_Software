@@ -16,6 +16,7 @@ from pulse_pc.ui.theme import icon, tokens
 
 # QR pairing is off for now: weak phone cameras could not read the code from a monitor.
 QR_ENABLED = True
+QR_SIZE = 240          # px on screen (logical)
 
 ONLINE_SECONDS = 120        # the app polls the PC every few seconds while open
 STATUS = {st.UNKNOWN: ("Нет данных", "off"), st.STOPPED: ("Сервер остановлен", "off"),
@@ -183,6 +184,12 @@ class PhoneScreen(QWidget):
                 image = QPixmap()
                 image.loadFromData(pairing_qr.png(pairing_qr.payload(
                     socket.gethostname(), list(state.addresses), state.tls_port, full, code)))
+                # Fixed on-screen size: big enough for any phone camera, small enough for the card.
+                # Nearest-neighbour scaling keeps the modules sharp.
+                side = round(QR_SIZE * self.qr.devicePixelRatioF())
+                image = image.scaled(side, side, Qt.AspectRatioMode.KeepAspectRatio,
+                                     Qt.TransformationMode.FastTransformation)
+                image.setDevicePixelRatio(self.qr.devicePixelRatioF())
                 self.qr.setPixmap(image)
                 self._qr_code = code
             self.qr.setVisible(QR_ENABLED and bool(full))
