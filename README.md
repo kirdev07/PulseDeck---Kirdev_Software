@@ -8,7 +8,7 @@
 
 **Windows 10/11 · PySide6 · Telegram · Android · TLS**
 
-[Скачать](https://github.com/kirdev07/PulseDeck---Kirdev_Software/releases/latest) · [Установка](УСТАНОВКА.md) · [Telegram-бот](BOT_GUIDE.md) · [PulseDesk для Android](https://github.com/kirdev07/PulseDeck-Mobile) · [PulseDeck Panel](https://github.com/kirdev07/PulseDesk-Panel_Kirdev-Software)
+[Скачать](https://github.com/kirdev07/PulseDeck---Kirdev_Software/releases/latest) · [Установка](УСТАНОВКА.md) · [Telegram-бот](BOT_GUIDE.md) · [PulseDesk для Android](https://github.com/kirdev07/PulseDeck-Mobile--KirDev-Software) · [PulseDeck Panel](https://github.com/kirdev07/PulseDeck-Panel_Kirdev-Software)
 
 </div>
 
@@ -21,8 +21,8 @@
 
 - **с компьютера** — окно в стиле AMOLED Black с живыми показателями CPU, RAM, GPU, дисков и сети;
 - **из Telegram** — личный бот: питание, программы, файлы, скриншоты, музыка, уведомления о нагрузке;
-- **с телефона** — приложения [PulseDesk](https://github.com/kirdev07/PulseDeck-Mobile) (пульт управления)
-  и [PulseDeck Panel](https://github.com/kirdev07/PulseDesk-Panel_Kirdev-Software) (второй экран у монитора)
+- **с телефона** — приложения [PulseDesk](https://github.com/kirdev07/PulseDeck-Mobile--KirDev-Software) (пульт управления)
+  и [PulseDeck Panel](https://github.com/kirdev07/PulseDeck-Panel_Kirdev-Software) (второй экран у монитора)
   по Wi-Fi или USB-кабелю, с защищённым подключением по коду.
 
 Ставится обычным установщиком за минуту: Python и библиотеки уже внутри, права администратора не нужны.
@@ -74,8 +74,8 @@
 
 | Приложение | Для чего |
 |---|---|
-| **[PulseDesk](https://github.com/kirdev07/PulseDeck-Mobile)** | Управление ПК с телефона: мониторинг, музыка с карточкой в шторке, файлы в обе стороны, процессы, окна, питание |
-| **[PulseDeck Panel](https://github.com/kirdev07/PulseDesk-Panel_Kirdev-Software)** | Телефон у монитора как второй экран: часы, показатели ПК, музыка; тёмная и белая темы |
+| **[PulseDesk](https://github.com/kirdev07/PulseDeck-Mobile--KirDev-Software)** | Управление ПК с телефона: мониторинг, музыка с карточкой в шторке, файлы в обе стороны, процессы, окна, питание |
+| **[PulseDeck Panel](https://github.com/kirdev07/PulseDeck-Panel_Kirdev-Software)** | Телефон у монитора как второй экран: часы, показатели ПК, музыка; тёмная и белая темы |
 
 Оба приложения — Android 11+, подключаются по Wi-Fi или USB-кабелю и обновляются сами с GitHub.
 Подключение: экран **«Телефон» → «Показать код»**, затем 6 цифр на телефоне.
