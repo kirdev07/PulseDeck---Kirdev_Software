@@ -37,6 +37,7 @@ EXCLUDES = [
 datas = [(str(ROOT / name), ".") for name in
          ("LICENSE", "PRIVACY_POLICY.md", "TERMS_OF_USE.md", "THIRD_PARTY_NOTICES.md")]
 datas.append((str(ROOT / "image" / "icon.ico"), "image"))
+datas.append((str(ROOT / "web_panel"), "web_panel"))     # the browser panel (services/web_panel)
 
 a = Analysis(
     [str(ROOT / "pulse_pc" / "__main__.py")],

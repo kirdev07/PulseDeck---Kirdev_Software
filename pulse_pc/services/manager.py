@@ -51,6 +51,8 @@ class ServiceManager:
         self.runtime = Runtime()
         self.telegram = TelegramService(self.runtime, store)
         self.local_api = LocalApiService(self.runtime, store, self.config_dir)
+        from pulse_pc.services.web_panel.service import WebPanelService
+        self.web_panel = WebPanelService(self.runtime, store, self.config_dir)
 
     def telegram_configured(self):
         from pulse_pc.core.secrets import load_token
@@ -66,6 +68,7 @@ class ServiceManager:
             self.store.post("phone", status=st.ERROR, error=reason)
             return
         self.local_api.start()
+        self.web_panel.start()          # only if switched on in Настройки → Веб-панель
         if telegram and self.telegram_configured():
             self.telegram.start()
         else:
@@ -75,7 +78,7 @@ class ServiceManager:
 
     def shutdown(self, timeout=8.0):
         """Telegram first (it may be sending), then the phone server, then the loop."""
-        for service in (self.telegram, self.local_api):
+        for service in (self.telegram, self.web_panel, self.local_api):
             try:
                 service.stop().result(timeout / 2)
             except Exception as exc:  # noqa: BLE001 - shutdown continues regardless

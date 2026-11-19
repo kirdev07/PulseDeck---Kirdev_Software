@@ -28,6 +28,7 @@ SECTIONS = (
     ("general", "Основные", "settings"),
     ("telegram", "Telegram Бот", "telegram"),
     ("phone", "Телефон", "phone"),
+    ("web", "Веб-панель", "network"),
     ("security", "Безопасность", "shield"),
     ("privacy", "Конфиденциальность", "info"),
     ("license", "Лицензия и компоненты", "info"),
@@ -100,7 +101,7 @@ class SettingsScreen(QWidget):
                                "QListWidget::item { padding: 9px 10px; }")
         self.pages = QStackedWidget()
         self.section_index = {}
-        builders = {"general": self._general, "telegram": self._telegram, "phone": self._phone,
+        builders = {"general": self._general, "telegram": self._telegram, "phone": self._phone, "web": self._web,
                     "security": self._security, "privacy": self._privacy, "license": self._license,
                     "terms": self._terms, "updates": self._updates,
                     "support": self._support, "about": self._about}
@@ -211,6 +212,10 @@ class SettingsScreen(QWidget):
         card.body.addWidget(self.phone_message)
         card.body.addWidget(button("Сопряжённые устройства", lambda: self._navigate("phone"), "ghost", "chevron"))
         layout.addWidget(card)
+
+    def _web(self, layout):
+        from pulse_pc.ui.screens.web_panel_settings import WebPanelSection
+        self.web_section = WebPanelSection(self, layout)
 
     def _security(self, layout):
         card = Card("Текущее состояние защиты")

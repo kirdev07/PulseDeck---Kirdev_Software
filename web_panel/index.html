@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark light">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PulseDeck">
+  <meta name="referrer" content="no-referrer">
+  <title>PulseDeck Panel</title>
+  <link rel="icon" href="logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <!-- Нет ключа доступа: ссылку или QR-код берут на ПК -->
+  <section id="nokey" class="screen" hidden>
+    <img src="logo.svg" alt="" class="logo-big">
+    <h1>PulseDeck Panel</h1>
+    <p class="muted">Откройте на ПК <b>PulseDeck → Настройки → Веб-панель</b> и отсканируйте QR-код камерой телефона — или вставьте ключ доступа.</p>
+    <form id="keyform" class="keyform">
+      <input id="keyinput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Ключ доступа">
+      <button type="submit">Подключить</button>
+    </form>
+  </section>
+
+  <main id="panel" hidden>
+    <header class="top">
+      <div class="brand">
+        <img src="logo.svg" alt="" class="logo">
+        <div>
+          <div id="pcname" class="pcname">—</div>
+          <div class="status"><span id="dot" class="dot"></span><span id="state">Подключение…</span></div>
+        </div>
+      </div>
+      <div class="clock">
+        <div id="time" class="time">--:--</div>
+        <div id="date" class="date"></div>
+      </div>
+    </header>
+
+    <section class="grid">
+      <article class="tile" id="cpu">
+        <div class="label">CPU</div>
+        <div class="value"><span class="num">—</span><span class="unit">%</span></div>
+        <div class="bar"><i></i></div>
+        <div class="sub">—</div>
+        <div class="cores"></div>
+      </article>
+      <article class="tile" id="ram">
+        <div class="label">RAM</div>
+        <div class="value"><span class="num">—</span><span class="unit">%</span></div>
+        <div class="bar"><i></i></div>
+        <div class="sub">—</div>
+      </article>
+      <article class="tile" id="gpu">
+        <div class="label">GPU</div>
+        <div class="value"><span class="num">—</span><span class="unit">%</span></div>
+        <div class="bar"><i></i></div>
+        <div class="sub">—</div>
+      </article>
+      <article class="tile" id="net">
+        <div class="label">Сеть</div>
+        <div class="pair"><span class="arrow">↓</span><span id="down">—</span></div>
+        <div class="pair"><span class="arrow">↑</span><span id="up">—</span></div>
+        <div class="sub">Работает <span id="uptime">—</span></div>
+      </article>
+    </section>
+
+    <section class="card media" id="media">
+      <div class="cover" id="cover"><img id="coverimg" alt="" hidden><span class="note">♪</span></div>
+      <div class="track">
+        <div class="label" id="source">Сейчас играет</div>
+        <div class="title" id="title">Ничего не играет</div>
+        <div class="artist" id="artist"></div>
+        <div class="progress" id="progress" hidden>
+          <div class="bar"><i id="seek"></i></div>
+          <div class="times"><span id="pos">0:00</span><span id="dur">0:00</span></div>
+        </div>
+        <div class="controls" id="controls" hidden>
+          <button type="button" data-cmd="prev" aria-label="Предыдущий">⏮</button>
+          <button type="button" data-cmd="toggle" aria-label="Пауза" id="playbtn" class="main">⏸</button>
+          <button type="button" data-cmd="next" aria-label="Следующий">⏭</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="label">Диски</div>
+      <div id="disks" class="disks"></div>
+    </section>
+
+    <footer class="foot">
+      <span id="message" class="muted"></span>
+      <button type="button" id="awake" class="link">Не гасить экран</button>
+    </footer>
+  </main>
+
+  <div id="offline" class="offline" hidden>
+    <div>
+      <div class="offline-title">Нет связи с ПК</div>
+      <div class="muted" id="offline-text">Переподключаюсь…</div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

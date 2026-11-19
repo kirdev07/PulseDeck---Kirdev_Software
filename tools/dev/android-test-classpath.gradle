@@ -1,0 +1,13 @@
+// Gradle's own test runner fails on a Windows user folder with non-Latin letters
+// (C:\Users\Киря). This init script writes the unit-test classpath to a file; the tests
+// then run with plain JUnitCore. See CLAUDE.md → «Тесты Android».
+allprojects {
+    tasks.register("printTestClasspath") {
+        notCompatibleWithConfigurationCache("debug helper")
+        dependsOn("compileDebugUnitTestKotlin")
+        doLast {
+            def t = project.tasks.getByName("testDebugUnitTest")
+            new File(System.getenv("CP_OUT")).text = t.classpath.files.join(File.pathSeparator)
+        }
+    }
+}

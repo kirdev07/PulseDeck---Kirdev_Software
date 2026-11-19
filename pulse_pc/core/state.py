@@ -40,6 +40,15 @@ class PhoneState:
 
 
 @dataclass(frozen=True)
+class WebPanelState:
+    status: str = UNKNOWN       # the browser panel server (services/web_panel)
+    port: int = 0               # 0 = not running
+    addresses: tuple = ()       # LAN addresses to open from a phone
+    clients: int = 0            # browsers watching right now
+    error: str = ""
+
+
+@dataclass(frozen=True)
 class PlayerState:
     status: str = "stopped"     # playing | paused | stopped
     title: str = ""
@@ -55,6 +64,7 @@ class AppState:
     telegram: TelegramState = field(default_factory=TelegramState)
     phone: PhoneState = field(default_factory=PhoneState)
     player: PlayerState = field(default_factory=PlayerState)
+    web_panel: WebPanelState = field(default_factory=WebPanelState)
 
 
 class StateStore(QObject):

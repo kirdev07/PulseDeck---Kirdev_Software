@@ -1,0 +1,16 @@
+{
+  "name": "PulseDeck Panel",
+  "short_name": "PulseDeck",
+  "description": "Что происходит на вашем ПК: нагрузка, сеть, диски и музыка",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "ru",
+  "icons": [
+    { "src": "logo.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}
