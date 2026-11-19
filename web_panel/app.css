@@ -96,7 +96,6 @@ a.button { display: block; text-align: center; text-decoration: none; color: var
 .date::first-letter { text-transform: uppercase; }
 
 .center { flex: 1; width: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
-.wave { width: 144px; height: 18px; }
 
 /* CompactPlayer: ≤560, radius 24, padding 12/14, cover 76, title 17, artist 13, source 10 */
 .player {
@@ -297,11 +296,8 @@ html[data-clock-font="serif"] { --clock-font: ui-serif, "New York", Georgia, "No
 html[data-clock-font="hand"] { --clock-font: "Snell Roundhand", "Segoe Script", "Dancing Script", cursive; }
 html[data-clock-font="mono"] .time { letter-spacing: -.06em; }
 
-/* ----- idle animation canvas sizes ----- */
-.wave[data-kind="pulse"] { width: 200px; height: 44px; }
-.wave[data-kind="eq"] { width: 120px; height: 40px; }
-.wave[data-kind="breathe"] { width: 64px; height: 64px; }
-.wave[data-kind="stars"] { width: 240px; height: 60px; }
+/* idle animation: the canvas size is set by app.js (about the player's width) */
+.wave { width: auto; height: auto; max-width: 100%; }
 
 /* ----- emoji companion (Настройки → Компаньон) ----- */
 .buddy { position: fixed; z-index: 2; pointer-events: none; font-size: 34px; line-height: 1;

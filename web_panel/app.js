@@ -80,6 +80,7 @@ function loadPrefs() {
   const old = store.get('pulsedeck.theme');           // before the preferences object
   if (!saved.theme && old) result.theme = old === 'light' ? 'light' : 'dark';
   if (saved.wave === false && !saved.idle) result.idle = 'none';      // the old «Волна» switch
+  if (result.idle === 'stars') result.idle = 'starfield';             // renamed
   result.tiles = (result.tiles || []).filter((t) => TILES[t]);
   result.tileOrder = [...new Set([...(result.tileOrder || []).filter((t) => TILES[t]), ...Object.keys(TILES)])];
   return result;
@@ -111,6 +112,7 @@ function applyPrefs() {
   root.dataset.clockFont = prefs.clockFont;
   const clock = CLOCK_COLORS[prefs.clockColor];
   if (clock) root.style.setProperty('--clock-color', clock); else root.style.removeProperty('--clock-color');
+  if (prefs.idle !== 'none' && !IDLE[prefs.idle]) prefs.idle = 'wave';     // an unknown saved choice
   $('wave').dataset.kind = prefs.idle;
   root.classList.toggle('no-motion', !prefs.motion);
   root.classList.toggle('pulse', prefs.pulse && prefs.motion);
@@ -436,56 +438,183 @@ function send(action, value) {
   }
 }
 
-// ----- idle animation (nothing plays): «Волна» is KiroX Motion of the panel -----
-const IDLE_SIZES = { wave: [144, 18], pulse: [200, 44], eq: [120, 40], breathe: [64, 64], stars: [240, 60] };
-const STAR_SEEDS = Array.from({ length: 14 }, (_, i) => [((i * 97) % 100) / 100, ((i * 53) % 100) / 100, (i * 0.7) % 6.28]);
+// ----- idle animation (nothing plays). «Волна» is KiroX Motion of the panel; the others are
+// decorative (they do not show real data). Drawn in the accent colour at ~30 fps. -----
+const IDLE = {
+  wave: { name: 'Волна', h: 28 }, waves: { name: 'Волны', h: 70 }, pulse: { name: 'Пульс', h: 80 },
+  eq: { name: 'Эквалайзер', h: 90 }, breathe: { name: 'Дыхание', h: 120 }, orbit: { name: 'Орбиты', h: 120 },
+  fireflies: { name: 'Светлячки', h: 110 }, ripples: { name: 'Рябь', h: 120 }, aurora: { name: 'Сияние', h: 110 },
+  starfield: { name: 'Звёздное небо', h: 120 }, matrix: { name: 'Матрица', h: 110 },
+};
+const rand = (seed) => { const x = Math.sin(seed * 9301 + 49297) * 233280; return x - Math.floor(x); };
+const FLIES = Array.from({ length: 22 }, (_, i) => ({ x: rand(i), y: rand(i + 50), s: 0.4 + rand(i + 99), p: rand(i + 7) * 6.28 }));
+const STARS = Array.from({ length: 90 }, (_, i) => ({ x: rand(i) * 2 - 1, y: rand(i + 200) * 2 - 1, z: rand(i + 400) }));
+const DROPS = Array.from({ length: 26 }, (_, i) => ({ x: rand(i + 600), v: 0.5 + rand(i + 700), o: rand(i + 800) }));
+const GLYPHS = 'ﾊﾐﾋｰｳｼﾅﾓﾆｻﾜﾂｵﾘｱﾎﾃﾏｹﾒｴｶｷﾑﾕﾗｾﾈｽﾀﾇﾍ0123456789';
 
-function drawIdle(kind, context, width, height, t) {
-  context.beginPath();
-  if (kind === 'wave') {                 // 48 steps, sin(i·0.42 − t/135ms)·2.3, as the panel
+function rgba(color, alpha) {
+  // accent comes as #rrggbb or rgb(...); returns the same colour with this alpha
+  const ctx = rgba.ctx || (rgba.ctx = document.createElement('canvas').getContext('2d'));
+  ctx.fillStyle = color;
+  const hex = ctx.fillStyle;                     // normalised #rrggbb
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
+
+function drawIdle(kind, c, w, h, t, ink) {
+  const mid = h / 2;
+  c.strokeStyle = ink; c.fillStyle = ink;
+  if (kind === 'wave') {                  // exactly the panel: 48 steps, sin(i·0.42 − t/135)·2.3, scaled to the width
+    const k = w / 144;
+    c.beginPath();
     for (let i = 0; i <= 48; i++) {
-      const x = (i / 48) * width, y = height / 2 + Math.sin(i * 0.42 - t / 135) * 2.3;
-      if (i === 0) context.moveTo(x, y); else context.lineTo(x, y);
+      const x = (i / 48) * w, y = mid + Math.sin(i * 0.42 - t / 135) * 2.3 * Math.min(k, 2);
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y);
     }
-    context.lineWidth = 1.15;
-    context.stroke();
-  } else if (kind === 'pulse') {        // the heartbeat of the PulseDeck logo, travelling left to right
-    const period = 2200, mid = height / 2;
-    const head = ((t % period) / period) * (width + 60) - 30;
-    context.lineWidth = 1.6;
-    for (let x = 0; x <= width; x += 2) {
+    c.lineWidth = 1.15 * Math.min(k, 1.6);
+    c.stroke();
+  } else if (kind === 'waves') {          // three layered sine waves drifting at different speeds
+    for (let layer = 0; layer < 3; layer++) {
+      c.beginPath();
+      for (let x = 0; x <= w; x += 3) {
+        const y = mid + Math.sin(x / (38 + layer * 14) - t / (900 - layer * 220) + layer) * (h * (0.32 - layer * 0.08))
+          * Math.sin((x / w) * Math.PI);
+        if (x === 0) c.moveTo(x, y); else c.lineTo(x, y);
+      }
+      c.globalAlpha = 0.9 - layer * 0.28;
+      c.lineWidth = 2 - layer * 0.4;
+      c.stroke();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'pulse') {          // the logo's heartbeat running across, with a fading trail and glow
+    const period = 2400, head = ((t % period) / period) * (w + 80) - 40;
+    c.lineWidth = 2;
+    c.shadowColor = ink; c.shadowBlur = 8;
+    c.beginPath();
+    for (let x = 0; x <= w; x += 2) {
       const d = x - head;
       let y = mid;
-      if (d > -14 && d < 0) y = mid - Math.sin((-d / 14) * Math.PI) * (height * 0.42) * (d > -7 ? 1 : -0.35);
-      context.globalAlpha = Math.max(0.12, 1 - Math.abs(d) / (width * 0.9));
-      if (x === 0) context.moveTo(x, y); else context.lineTo(x, y);
+      if (d > -26 && d < 0) {
+        const u = -d / 26;                // 0..1 along one beat: small bump, big spike, dip
+        y = mid - (u < 0.2 ? Math.sin(u / 0.2 * Math.PI) * h * 0.08
+          : u < 0.55 ? Math.sin((u - 0.2) / 0.35 * Math.PI) * h * 0.42
+            : -Math.sin((u - 0.55) / 0.45 * Math.PI) * h * 0.16);
+      }
+      if (x === 0) c.moveTo(x, y); else c.lineTo(x, y);
     }
-    context.globalAlpha = 1;
-    context.stroke();
-  } else if (kind === 'eq') {           // decorative bars (not real audio levels)
-    const bars = 9, gap = 4, w = (width - gap * (bars - 1)) / bars;
+    const fade = c.createLinearGradient(head - w * 0.8, 0, head + 4, 0);
+    fade.addColorStop(0, rgba(ink, 0)); fade.addColorStop(1, rgba(ink, 1));
+    c.strokeStyle = fade;
+    c.stroke();
+    c.shadowBlur = 0;
+    c.fillStyle = ink;
+    if (head >= 0 && head <= w) { c.beginPath(); c.arc(head, mid, 3, 0, Math.PI * 2); c.fill(); }
+  } else if (kind === 'eq') {             // rounded bars with a soft reflection
+    const bars = 15, gap = 6, bw = (w - gap * (bars - 1)) / bars, base = h * 0.72;
     for (let i = 0; i < bars; i++) {
-      const h = (0.25 + 0.75 * Math.abs(Math.sin(t / (520 + i * 61) + i * 1.7))) * height;
-      context.roundRect ? context.roundRect(i * (w + gap), height - h, w, h, 2) : context.rect(i * (w + gap), height - h, w, h);
+      const v = 0.18 + 0.82 * Math.abs(Math.sin(t / (480 + i * 47) + i * 1.3) * Math.sin(t / 1900 + i * 0.4));
+      const bh = v * base, x = i * (bw + gap);
+      c.globalAlpha = 1;
+      c.beginPath(); c.roundRect ? c.roundRect(x, base - bh, bw, bh, bw / 2) : c.rect(x, base - bh, bw, bh); c.fill();
+      c.globalAlpha = 0.18;
+      c.beginPath(); c.roundRect ? c.roundRect(x, base + 3, bw, bh * 0.35, bw / 2) : c.rect(x, base + 3, bw, bh * 0.35); c.fill();
     }
-    context.fill();
-  } else if (kind === 'breathe') {      // slow breathing circle, 4 s in, 4 s out
+    c.globalAlpha = 1;
+  } else if (kind === 'breathe') {        // concentric rings, 4 s in / 4 s out
     const k = 0.5 + 0.5 * Math.sin(t / 1273);
-    context.globalAlpha = 0.25 + 0.55 * k;
-    context.arc(width / 2, height / 2, 10 + k * (width / 2 - 14), 0, Math.PI * 2);
-    context.lineWidth = 1.6;
-    context.stroke();
-    context.globalAlpha = 1;
-  } else if (kind === 'stars') {
-    for (const [fx, fy, phase] of STAR_SEEDS) {
-      const a = 0.5 + 0.5 * Math.sin(t / 700 + phase);
-      context.globalAlpha = a;
-      context.beginPath();
-      context.arc(fx * width, fy * height, 0.8 + a * 1.4, 0, Math.PI * 2);
-      context.fill();
+    const r = (h / 2 - 6) * (0.55 + 0.45 * k);
+    for (let ring = 3; ring >= 0; ring--) {
+      c.beginPath(); c.arc(w / 2, mid, r * (1 - ring * 0.18), 0, Math.PI * 2);
+      c.globalAlpha = (0.12 + 0.5 * k) * (1 - ring * 0.22);
+      c.lineWidth = 1.6;
+      c.stroke();
     }
-    context.globalAlpha = 1;
+    c.globalAlpha = 0.18 * k; c.beginPath(); c.arc(w / 2, mid, r * 0.42, 0, Math.PI * 2); c.fill();
+    c.globalAlpha = 1;
+  } else if (kind === 'orbit') {          // three planets on tilted ellipses around a glowing sun
+    c.shadowColor = ink; c.shadowBlur = 14;
+    c.beginPath(); c.arc(w / 2, mid, 6, 0, Math.PI * 2); c.fill();
+    c.shadowBlur = 0;
+    [[0.42, 0.26, 3200, 3], [0.3, 0.38, 5200, 2.4], [0.18, 0.2, 2100, 1.8]].forEach(([rx, ry, period, size], i) => {
+      const a = (t / period) * Math.PI * 2 + i * 2;
+      c.globalAlpha = 0.22; c.lineWidth = 1;
+      c.beginPath(); c.ellipse(w / 2, mid, w * rx * 0.62, h * ry, 0, 0, Math.PI * 2); c.stroke();
+      c.globalAlpha = 1;
+      c.beginPath(); c.arc(w / 2 + Math.cos(a) * w * rx * 0.62, mid + Math.sin(a) * h * ry, size, 0, Math.PI * 2); c.fill();
+    });
+  } else if (kind === 'fireflies') {      // soft dots drifting and glowing on and off
+    c.shadowColor = ink; c.shadowBlur = 10;
+    for (const f of FLIES) {
+      const x = ((f.x + Math.sin(t / 4000 * f.s + f.p) * 0.08 + t / 90000 * f.s) % 1) * w;
+      const y = (f.y + Math.cos(t / 3000 * f.s + f.p) * 0.12) * h;
+      c.globalAlpha = 0.25 + 0.75 * Math.max(0, Math.sin(t / 900 * f.s + f.p));
+      c.beginPath(); c.arc(x, y, 1.6 + f.s, 0, Math.PI * 2); c.fill();
+    }
+    c.shadowBlur = 0; c.globalAlpha = 1;
+  } else if (kind === 'ripples') {        // rings spreading from the centre, like a drop in water
+    for (let i = 0; i < 4; i++) {
+      const u = ((t / 3200) + i / 4) % 1;
+      c.globalAlpha = (1 - u) * 0.8;
+      c.lineWidth = 1.5;
+      c.beginPath(); c.ellipse(w / 2, mid, u * w * 0.48, u * h * 0.46, 0, 0, Math.PI * 2); c.stroke();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'aurora') {         // northern lights: soft ribbons of the accent colour
+    for (let band = 0; band < 4; band++) {
+      const grad = c.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0, rgba(ink, 0)); grad.addColorStop(0.5, rgba(ink, 0.22 - band * 0.04)); grad.addColorStop(1, rgba(ink, 0));
+      c.fillStyle = grad;
+      c.beginPath();
+      c.moveTo(0, h);
+      for (let x = 0; x <= w; x += 6) {
+        c.lineTo(x, mid + Math.sin(x / (70 + band * 25) + t / (2600 + band * 700) + band) * h * 0.28
+          + Math.sin(x / 23 + t / 1300) * 3 - band * 6);
+      }
+      c.lineTo(w, h); c.closePath(); c.fill();
+    }
+    c.fillStyle = ink;
+  } else if (kind === 'starfield') {      // flying through stars
+    for (const star of STARS) {
+      const z = 1 - ((star.z + t / 9000) % 1);
+      const x = w / 2 + (star.x / z) * w * 0.12, y = mid + (star.y / z) * h * 0.25;
+      if (x < 0 || x > w || y < 0 || y > h) continue;
+      c.globalAlpha = Math.min(1, (1 - z) * 1.4);
+      c.beginPath(); c.arc(x, y, Math.max(0.4, (1 - z) * 2.2), 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'matrix') {         // falling glyph columns
+    const size = 13;
+    c.font = `${size}px ui-monospace, Menlo, monospace`;
+    c.textAlign = 'center';
+    for (const [i, drop] of DROPS.entries()) {
+      const x = drop.x * w, head = ((t / 1000 * drop.v * 40 + drop.o * h * 3) % (h + 90)) - 30;
+      for (let k = 0; k < 7; k++) {
+        const y = head - k * size;
+        if (y < 0 || y > h) continue;
+        c.globalAlpha = k === 0 ? 1 : (1 - k / 7) * 0.6;
+        c.fillText(GLYPHS[(i * 7 + k + Math.floor(t / 180)) % GLYPHS.length], x, y);
+      }
+    }
+    c.globalAlpha = 1;
   }
+}
+
+// Animations that fill the whole canvas fade out at its edges instead of ending in a hard box.
+const SOFT_EDGES = new Set(['waves', 'aurora', 'fireflies', 'starfield', 'matrix']);
+function softEdges(c, w, h) {
+  c.save();
+  c.globalCompositeOperation = 'destination-in';
+  const across = c.createLinearGradient(0, 0, w, 0);
+  across.addColorStop(0, 'rgba(0,0,0,0)'); across.addColorStop(0.18, 'rgba(0,0,0,1)');
+  across.addColorStop(0.82, 'rgba(0,0,0,1)'); across.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = across;
+  c.fillRect(0, 0, w, h);
+  const down = c.createLinearGradient(0, 0, 0, h);
+  down.addColorStop(0, 'rgba(0,0,0,0)'); down.addColorStop(0.2, 'rgba(0,0,0,1)');
+  down.addColorStop(0.8, 'rgba(0,0,0,1)'); down.addColorStop(1, 'rgba(0,0,0,0)');
+  c.fillStyle = down;
+  c.fillRect(0, 0, w, h);
+  c.restore();
 }
 
 function startIdle() {
@@ -494,22 +623,23 @@ function startIdle() {
   let last = 0;
   function frame(now) {
     const kind = prefs.idle;
-    if (!canvas.hidden && !document.hidden && IDLE_SIZES[kind] && now - last > 33) {     // ~30 fps, as the panel
+    if (!canvas.hidden && !document.hidden && IDLE[kind] && now - last > 33) {     // ~30 fps, as the panel
       last = now;
       const ratio = window.devicePixelRatio || 1;
-      const [width, height] = IDLE_SIZES[kind];
+      const width = Math.round(Math.min(480, window.innerWidth * 0.8));             // about the player's width
+      const height = Math.min(IDLE[kind].h, Math.round(window.innerHeight * 0.22));
       if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
         canvas.width = width * ratio; canvas.height = height * ratio;
+        canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
       }
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, width, height);
-      const ink = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
-      context.strokeStyle = ink;
-      context.fillStyle = ink;
       context.lineCap = 'round';
       context.lineJoin = 'round';
+      const ink = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#ffffff';
       const still = !prefs.motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      drawIdle(kind, context, width, height, still ? 0 : now);
+      drawIdle(kind, context, width, height, still ? 0 : now, ink);
+      if (SOFT_EDGES.has(kind)) softEdges(context, width, height);
     }
     requestAnimationFrame(frame);
   }
@@ -795,8 +925,7 @@ function buildSettings() {
     toggle('showVolume', 'Громкость ПК'),
 
     el('h3', { text: 'Анимации' }),
-    pref('Когда ничего не играет', chips('idle', [['wave', 'Волна'], ['pulse', 'Пульс'], ['eq', 'Эквалайзер'],
-      ['breathe', 'Дыхание'], ['stars', 'Звёздочки'], ['none', 'Нет']])),
+    pref('Когда ничего не играет', chips('idle', [...Object.entries(IDLE).map(([k, v]) => [k, v.name]), ['none', 'Нет']])),
     pref('Компаньон', chips('buddy', [['none', 'Нет'], ['cat', '🐱 Котик с настроением'], ['walk', '🐈 Котик гуляет'],
       ['hearts', '💖 Сердечки'], ['snow', '❄️ Снегопад'], ['sparkle', '✨ Звёздочки']])),
     prefs.buddy === 'cat' ? el('div', { class: 'note-text',
