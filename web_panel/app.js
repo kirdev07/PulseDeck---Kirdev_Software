@@ -12,6 +12,15 @@
 // burn-in shift, clock screensaver without connection. The Android panel gets the same later.
 'use strict';
 
+// A script error shows on screen: on a phone there is no console to look at.
+function showCrash(text) {
+  let box = document.querySelector('.crash');
+  if (!box) { box = document.createElement('div'); box.className = 'crash'; document.body.append(box); }
+  box.textContent = `Ошибка веб-панели (пришлите скриншот): ${text}`;
+}
+window.addEventListener('error', (e) => showCrash(`${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
+window.addEventListener('unhandledrejection', (e) => showCrash(String(e.reason && (e.reason.stack || e.reason))));
+
 const TOKEN_STORE = 'pulsedeck.token';
 const SKIP_STORE = 'pulsedeck.insecure';
 const PREFS_STORE = 'pulsedeck.prefs';

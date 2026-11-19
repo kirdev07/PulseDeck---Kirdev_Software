@@ -58,6 +58,18 @@ SECURITY_HEADERS = {
 }
 
 
+def assets_version():
+    """Short fingerprint of the page's script and style (changes with every edit)."""
+    import hashlib
+    digest = hashlib.sha256()
+    for name in ("app.js", "app.css"):
+        try:
+            digest.update((WEB_ROOT / name).read_bytes())
+        except OSError:
+            pass
+    return digest.hexdigest()[:8]
+
+
 def browser(token):
     """The paired browser for this token, or None (app tokens do not count)."""
     return mobile_access.authenticate(token, mobile_access.KIND_WEB)
@@ -90,6 +102,11 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
         path = WEB_ROOT / name if name else None
         if not path or not path.is_file():
             raise web.HTTPNotFound()
+        if name == "index.html":
+            # app.js?v=<fingerprint>: a phone (an iPhone home-screen app above all) can never keep
+            # an old script or style; the fingerprint is also shown in Настройки.
+            html = path.read_text(encoding="utf-8").replace("__VERSION__", assets_version())
+            return web.Response(text=html, content_type="text/html")
         return web.FileResponse(path, headers={"Content-Type": TYPES.get(path.suffix, "application/octet-stream")})
 
     async def info(request):

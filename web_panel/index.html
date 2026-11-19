@@ -14,7 +14,7 @@
   <link rel="icon" href="logo.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icon.png">
   <link rel="manifest" href="manifest.webmanifest">
-  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="app.css?v=__VERSION__">
 </head>
 <body>
   <!-- Line icons of PulseDeck (24×24), the same set as PulseDeck Panel (PanelIcons.kt) and the PC app. -->
@@ -153,6 +153,7 @@
         <div id="secureinfo" class="info"></div>
       </div>
       <button type="button" id="forget" class="link danger">Отключить этот телефон</button>
+      <div class="version" id="version">Веб-панель __VERSION__</div>
     </div>
   </div>
 
@@ -165,6 +166,6 @@
 
   <div id="toast" class="toast" hidden></div>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=__VERSION__"></script>
 </body>
 </html>
