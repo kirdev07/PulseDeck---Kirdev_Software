@@ -376,7 +376,7 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
 
         await send({"type": "hello", "app": "PulseDeck", "name": socket.gethostname(),
                     "device": device.get("name", ""), "control": view["control"], "secure": secure,
-                    "metrics_interval": METRICS_SECONDS})
+                    "metrics_interval": METRICS_SECONDS, "assets": assets_version()})
         await send(access_message())
         tasks = [asyncio.create_task(loop()) for loop in (metrics_loop, media_loop, sessions_loop, auth_loop,
                                                           levels_loop, activity_loop)]

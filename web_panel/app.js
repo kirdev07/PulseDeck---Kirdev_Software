@@ -21,6 +21,7 @@ function showCrash(text) {
 window.addEventListener('error', (e) => showCrash(`${e.message} @ ${(e.filename || '').split('/').pop()}:${e.lineno}`));
 window.addEventListener('unhandledrejection', (e) => showCrash(String(e.reason && (e.reason.stack || e.reason))));
 
+const LOADED_ASSETS = (/[?&]v=(\w+)/.exec((document.currentScript || {}).src || '') || [])[1] || '';
 const TOKEN_STORE = 'pulsedeck.token';
 const SKIP_STORE = 'pulsedeck.insecure';
 const PREFS_STORE = 'pulsedeck.prefs';
@@ -1374,6 +1375,15 @@ function connect() {
     let msg;
     try { msg = JSON.parse(event.data); } catch (e) { return; }
     if (msg.type === 'hello') {
+      if (msg.assets && LOADED_ASSETS && msg.assets !== LOADED_ASSETS) {
+        let tried = '';
+        try { tried = sessionStorage.getItem('pulsedeck.reloaded') || ''; } catch (e) { /* private mode */ }
+        if (tried !== msg.assets) {     // once per new version: never a reload loop
+          try { sessionStorage.setItem('pulsedeck.reloaded', msg.assets); } catch (e) { /* private mode */ }
+          location.reload();            // the PC was updated while this page slept: take the new page
+          return;
+        }
+      }
       $('pcname').textContent = msg.name || 'ПК';
       levelsWanted = null;          // a fresh socket: tell the PC again what we want
       subscribeLevels();

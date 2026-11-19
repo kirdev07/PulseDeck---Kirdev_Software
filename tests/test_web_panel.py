@@ -158,6 +158,7 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
         found = await self.messages(ws, 4)
         self.assertTrue({"hello", "access", "metrics", "media"} <= set(found) | {"metrics"})
         self.assertFalse(found["hello"]["control"])
+        self.assertEqual(found["hello"]["assets"], service.assets_version())     # a sleeping old page reloads
         await ws.close()
 
     async def test_view_only_refuses_commands(self):
