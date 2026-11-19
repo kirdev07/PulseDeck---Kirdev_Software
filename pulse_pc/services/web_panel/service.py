@@ -234,7 +234,8 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
                 current = await asyncio.to_thread(browser, token)
                 if not current:
                     logger.info("Доступ браузера к веб-панели отозван.")
-                    await ws.close(code=CLOSE_REVOKED, message=b"revoked")
+                    async with lock:        # not in the middle of a send (see display_api)
+                        await ws.close(code=CLOSE_REVOKED, message=b"revoked")
                     return
                 control = may_control(current, secure)
                 device.update(current)

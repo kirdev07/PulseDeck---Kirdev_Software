@@ -216,7 +216,10 @@ def add_display_route(app, current_player, control_player, workstation_locked):
                 await asyncio.sleep(AUTH_RECHECK_SECONDS)
                 if not await asyncio.to_thread(mobile_access.authenticate, token):
                     logger.info("Доступ панели отозван, соединение закрыто.")
-                    await ws.close(code=CLOSE_REVOKED, message=b"revoked")
+                    # Under the send lock: a close racing a send can abort the socket (1006),
+                    # and the panel would never learn that it was revoked.
+                    async with send_lock:
+                        await ws.close(code=CLOSE_REVOKED, message=b"revoked")
                     return
 
         await send({"type": "hello", "protocol": PROTOCOL, "app": "PulseDeck", "name": socket.gethostname(),
