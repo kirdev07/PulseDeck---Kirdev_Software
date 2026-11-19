@@ -13,6 +13,12 @@
 'use strict';
 
 const lockScreen = { audio: null, on: false, waiting: false, cover: '' };
+// A short report to the PC log (Журнал PulseDeck): the phone has no console to look at.
+function lockLog(text) {
+  try {
+    if (state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify({ type: 'log', text: `плеер блокировки: ${text}` }));
+  } catch (e) { /* not important */ }
+}
 const lockScreenSupported = () => 'mediaSession' in navigator && typeof MediaMetadata === 'function';
 
 function lockHandlers(active) {
@@ -31,23 +37,34 @@ function lockHandlers(active) {
   }
 }
 
+// Once per connection while the setting is on: what this browser supports.
+function lockReport() {
+  if (!prefs.lockScreen) return;
+  lockLog(`включён; mediaSession: ${'mediaSession' in navigator ? 'да' : 'нет'}, audioSession: ${navigator.audioSession ? 'да' : 'нет'}, `
+    + `экран Домой: ${matchMedia('(display-mode: standalone)').matches || navigator.standalone ? 'да' : 'нет'}, управление: ${state.control ? 'да' : 'нет'}, `
+    + `звук: ${lockScreen.on && lockScreen.audio && !lockScreen.audio.paused ? 'играет' : 'нет'}`);
+}
+
 async function startLockScreen() {
-  if (!lockScreenSupported()) return false;
-  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* older iOS */ }
+  if (!lockScreenSupported()) { lockLog('mediaSession не поддерживается этим браузером'); return false; }
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { lockLog(`audioSession: ${e.name}`); }
   if (!lockScreen.audio) {
     const audio = new Audio('silence.wav');
     audio.loop = true;
     audio.preload = 'auto';
     audio.setAttribute('playsinline', '');
     audio.addEventListener('pause', () => {          // paused by the system: back on the next tap
-      if (lockScreen.on && prefs.lockScreen) { lockScreen.on = false; waitForTap(); }
+      if (lockScreen.on && prefs.lockScreen) { lockLog('звук остановлен системой'); lockScreen.on = false; waitForTap(); }
     });
+    audio.addEventListener('error', () => lockLog(`ошибка звука: ${audio.error ? audio.error.code : '?'}`));
+    audio.addEventListener('playing', () => lockLog(`звук играет (${Math.round(audio.duration || 0)} с), audioSession: ${navigator.audioSession ? navigator.audioSession.type : 'нет'}`));
     document.body.append(audio);                   // some iOS versions want it in the page
     lockScreen.audio = audio;
   }
   try {
     await lockScreen.audio.play();
   } catch (e) {
+    lockLog(`звук не запущен: ${e.name} — жду касания`);
     waitForTap();           // not from a tap (page just opened): start on the next tap
     return false;
   }
@@ -67,6 +84,10 @@ function stopLockScreen() {
   navigator.mediaSession.metadata = null;
   navigator.mediaSession.playbackState = 'none';
 }
+
+document.addEventListener('visibilitychange', () => {
+  if (lockScreen.on) lockLog(`страница ${document.hidden ? 'скрыта (экран заблокирован или другое приложение)' : 'снова видна'}, звук ${lockScreen.audio && !lockScreen.audio.paused ? 'играет' : 'стоит'}`);
+});
 
 function waitForTap() {
   if (lockScreen.waiting) return;

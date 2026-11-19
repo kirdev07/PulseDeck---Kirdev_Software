@@ -238,7 +238,7 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
         reader = MetricsReader()
         lock = asyncio.Lock()
         secure = request.secure
-        view = {"control": may_control(device, secure), "source": "", "wake": asyncio.Event()}
+        view = {"control": may_control(device, secure), "source": "", "wake": asyncio.Event(), "logs": 0}
         trusted = bool(secure and device.get("secure"))     # window titles only over HTTPS
 
         def access_message():
@@ -374,6 +374,12 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
                     continue
                 if data.get("type") == "ping":
                     await send({"type": "pong"})
+                elif data.get("type") == "log" and view["logs"] < 40:
+                    # What the phone's browser did (the lock screen player): the phone has no
+                    # console to read, so it reports to the PC log. Short, few per connection.
+                    view["logs"] += 1
+                    text = " ".join(str(data.get("text", "")).split())[:200]
+                    logger.info("Веб-панель, %s: %s", device.get("name", "?"), text)
                 elif data.get("type") == "command":
                     action = data.get("action")
                     if action not in COMMANDS:

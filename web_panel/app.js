@@ -1440,6 +1440,7 @@ function connect() {
       showControls();
       pcAccessChanged();
       updateLockScreen();
+      lockReport();
     } else if (msg.type === 'metrics') {
       showMetrics(msg);
     } else if (msg.type === 'media') {
