@@ -57,7 +57,7 @@ const DEFAULTS = {
   bgDark: 'default', bgLight: 'default', clockColor: 'ink', uiFont: 'system', clockFont: 'system',
   idle: 'wave', idleSize: 'normal', motion: true, pulse: false,
   layout: 'panel', tiles: ['cpu', 'gpu', 'ram', 'net', 'disk'], tileOrder: Object.keys(TILES), disk: '',
-  playerAlways: false, waveSeek: true, showCover: true, showProgress: true, showVolume: true, sparks: true, tileRows: 'wrap',
+  playerAlways: false, waveSeek: true, lockScreen: false, showCover: true, showProgress: true, showVolume: true, sparks: true, tileRows: 'wrap',
   alerts: true, notify: false, push: false, alertOffline: true,
   nowPlaying: true, coverColors: true, coverBackdrop: false, gestures: true, showActivity: true,
   limits: { cpu: 90, gpu: 90, ram: 90, vram: 95, disk: 10, battery: 20 },
@@ -145,6 +145,7 @@ function forgetToken(reason) {
   store.drop(TOKEN_STORE);
   state.token = '';
   if (state.ws) state.ws.close();
+  stopLockScreen();
   showPairing(reason);
 }
 
@@ -162,6 +163,8 @@ const isApple = () => /iPhone|iPad|Macintosh/.test(navigator.userAgent);
 
 function only(id) {
   for (const screen of ['setup', 'pairing', 'panel']) $(screen).hidden = screen !== id;
+  if (id !== 'panel' && pc.open) closePc();
+  else if (pc.open) $('panel').hidden = true;        // «Управление ПК» stays open over a reconnect
   $('offline').hidden = true;
 }
 
@@ -644,6 +647,7 @@ function showMedia(msg) {
   tickProgress();
   if (prefs.tiles.includes('volume')) renderMetrics();
   if (!coverKey) { coverColor = ''; applyCoverColor(); }
+  updateLockScreen();
 }
 
 function showSessions(items) {
@@ -1427,12 +1431,15 @@ function connect() {
         }
       }
       $('pcname').textContent = msg.name || 'ПК';
+      $('pc-name').textContent = msg.name || '';
       only('panel');
       setStatus(true);
     } else if (msg.type === 'access') {
       state.control = !!msg.control;
       state.reason = msg.reason || '';
       showControls();
+      pcAccessChanged();
+      updateLockScreen();
     } else if (msg.type === 'metrics') {
       showMetrics(msg);
     } else if (msg.type === 'media') {
@@ -1546,6 +1553,7 @@ function set(key, value) {
   prefs[key] = value;
   savePrefs();
   if (key === 'limits' || key === 'alerts') syncPushPrefs();
+  if (key === 'lockScreen') { if (value) startLockScreen(); else stopLockScreen(); }   // from the tap: sound may start
   applyPrefs();
   buildSettings();
 }
@@ -1658,6 +1666,10 @@ function buildSettings() {
     toggle('playerAlways', 'Показывать, даже когда ничего не играет'),
     toggle('nowPlaying', 'Полоски «играет» рядом с названием трека'),
     toggle('waveSeek', 'Ползунок трека волной, пока играет'),
+    lockScreenSupported() ? toggle('lockScreen', 'Плеер на экране блокировки') : null,
+    prefs.lockScreen ? el('div', { class: 'note-text', text: state.control
+      ? 'Трек ПК виден на экране блокировки и в Пункте управления; кнопки там переключают музыку на ПК. Пока включено, страница играет тишину — музыка в других приложениях телефона встанет на паузу.'
+      : 'Трек ПК виден на экране блокировки. Кнопки там заработают в защищённом режиме с доступом «Полный».' }) : null,
     toggle('showCover', 'Обложка'),
     toggle('showProgress', 'Полоса времени'),
     toggle('showVolume', 'Громкость ПК'),
@@ -1762,6 +1774,11 @@ document.addEventListener('DOMContentLoaded', async () => {
   const volume = $('volume');
   volume.addEventListener('input', () => { state.volumeBusy = performance.now(); $('volumevalue').textContent = volume.value; });
   volume.addEventListener('change', () => { state.volumeBusy = performance.now(); send('volume', Number(volume.value)); });
+
+  // «Управление ПК» and the lock screen player
+  $('open-pc').addEventListener('click', () => openPc());
+  $('close-pc').addEventListener('click', closePc);
+  if (prefs.lockScreen) startLockScreen();          // the browser lets the sound start on the first tap
 
   // settings sheet
   $('open-settings').addEventListener('click', () => { buildSettings(); $('sheet').hidden = false; });

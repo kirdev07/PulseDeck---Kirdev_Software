@@ -1,0 +1,101 @@
+// The PC's track on the phone's lock screen and in Control Centre / the notification shade
+// (Media Session API): title, artist, cover, position, and the buttons play/pause,
+// previous/next, seek — they control the music on the PC.
+//
+// A browser shows that player only for a page that plays sound itself, so while this is on the
+// page plays silence.wav in a loop (true silence; it does take the phone's audio, so music in
+// another app on the phone pauses — that is how iOS works). It starts only from a tap (browser
+// rule): the switch in Настройки, or the first tap on the page after it was switched on.
+// Buttons work only where music control is allowed (HTTPS + «Полный»); otherwise view only.
+'use strict';
+
+const lockScreen = { audio: null, on: false, waiting: false, cover: '' };
+const lockScreenSupported = () => 'mediaSession' in navigator && typeof MediaMetadata === 'function';
+
+function lockHandlers(active) {
+  const ms = navigator.mediaSession;
+  const playing = () => !!state.media && state.media.status === 'playing';
+  const handlers = {
+    play: () => { if (!playing()) send('toggle'); },
+    pause: () => { if (playing()) send('toggle'); },
+    stop: () => { if (playing()) send('toggle'); },
+    previoustrack: () => send('prev'),
+    nexttrack: () => send('next'),
+    seekto: (details) => { if (details && details.seekTime >= 0) send('seek', Math.round(details.seekTime)); },
+  };
+  for (const [action, handler] of Object.entries(handlers)) {
+    try { ms.setActionHandler(action, active && state.control ? handler : null); } catch (e) { /* not supported here */ }
+  }
+}
+
+async function startLockScreen() {
+  if (!lockScreenSupported()) return false;
+  if (!lockScreen.audio) {
+    lockScreen.audio = new Audio('silence.wav');
+    lockScreen.audio.loop = true;
+    lockScreen.audio.setAttribute('playsinline', '');
+  }
+  try {
+    await lockScreen.audio.play();
+  } catch (e) {
+    waitForTap();           // not from a tap (page just opened): start on the next tap
+    return false;
+  }
+  lockScreen.on = true;
+  lockScreen.waiting = false;
+  lockScreen.cover = '';
+  lockHandlers(true);
+  updateLockScreen();
+  return true;
+}
+
+function stopLockScreen() {
+  lockScreen.on = false;
+  if (lockScreen.audio) lockScreen.audio.pause();
+  if (!lockScreenSupported()) return;
+  lockHandlers(false);
+  navigator.mediaSession.metadata = null;
+  navigator.mediaSession.playbackState = 'none';
+}
+
+function waitForTap() {
+  if (lockScreen.waiting) return;
+  lockScreen.waiting = true;
+  const tap = () => {
+    document.removeEventListener('pointerup', tap, true);
+    lockScreen.waiting = false;
+    if (prefs.lockScreen && !lockScreen.on) startLockScreen();
+  };
+  document.addEventListener('pointerup', tap, true);
+}
+
+// Called on every media message and when access changes.
+function updateLockScreen() {
+  if (!lockScreen.on || !lockScreenSupported()) return;
+  const ms = navigator.mediaSession;
+  const s = state.media;
+  lockHandlers(true);
+  if (!s) {
+    ms.metadata = new MediaMetadata({ title: 'Ничего не играет', artist: `PulseDeck · ${$('pcname').textContent}`,
+      artwork: [{ src: new URL('icon.png', location.href).href, sizes: '512x512', type: 'image/png' }] });
+    ms.playbackState = 'paused';
+    return;
+  }
+  const cover = s.cover
+    ? new URL(`cover?key=${encodeURIComponent(s.cover)}&t=${encodeURIComponent(state.token)}`, location.href).href
+    : new URL('icon.png', location.href).href;
+  const key = [s.title, s.artist, s.album, cover].join('\n');
+  if (key !== lockScreen.cover) {             // new metadata only when the track changes
+    lockScreen.cover = key;
+    ms.metadata = new MediaMetadata({ title: s.title || '—', artist: s.artist || s.source || '', album: s.album || s.source || '',
+      artwork: [{ src: cover, sizes: '512x512', type: s.cover ? 'image/jpeg' : 'image/png' }] });
+  }
+  ms.playbackState = s.status === 'playing' ? 'playing' : 'paused';
+  if (ms.setPositionState && s.duration > 0) {
+    let position = s.position || 0;
+    if (s.status === 'playing') position += (performance.now() - state.mediaAt) / 1000;
+    try {   // the rate may not be 0; a paused state stops the bar by itself
+      ms.setPositionState({ duration: s.duration, position: Math.min(Math.max(0, position), s.duration), playbackRate: 1 });
+    } catch (e) { /* an old browser */ }
+  }
+}

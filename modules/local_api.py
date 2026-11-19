@@ -146,9 +146,14 @@ def end_process(pid):
     return name
 
 
-def make_app(features_getter=lambda: None, version=0, pairing=None):
+def make_app(features_getter=lambda: None, version=0, pairing=None, browser=False, prefix=""):
     """version 0: the original HTTP API (/api/...). version 1: the same handlers under
-    /api/v1/... for the TLS server, with code-based pairing and /api/v1/info."""
+    /api/v1/... for the TLS server, with code-based pairing and /api/v1/info.
+
+    browser=True: the same v1 handlers for «Управление ПК» of the web panel, mounted under
+    `prefix` (e.g. /pc). Only browser tokens (KIND_WEB) open it, and only over HTTPS from a
+    browser paired over HTTPS with «Полный» (web_panel.service.may_control); no pairing route
+    and no panel socket there."""
     from modules.monitor import workstation_locked
     pairing = pairing or mobile_access.PAIRING
     pairing_lock = asyncio.Lock()
@@ -164,13 +169,19 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
             logger.warning("Отклонён запрос не из локальной сети: %s %s", request.remote, request.path)
             return json_error(403, "PulseDeck принимает запросы только из локальной сети.")
         path = request.path
+        if prefix and path.startswith(prefix + "/"):
+            path = path[len(prefix):]
         if version == 1 and path.startswith("/api/v1/"):
             path = "/api/" + path[len("/api/v1/"):]       # same rules for both versions
         if path not in ("/api/ping", "/api/pair", "/api/info"):
             given = request.headers.get("Authorization", "")
-            device = await asyncio.to_thread(mobile_access.authenticate, given[7:] if given.startswith("Bearer ") else "")
+            token = given[7:] if given.startswith("Bearer ") else ""
+            device = await asyncio.to_thread(mobile_access.authenticate, token,
+                                             mobile_access.KIND_WEB if browser else mobile_access.KIND_APP)
             if not device:
                 return json_error(401, "Устройство не подключено или отозвано.")
+            if browser and not (request.secure and device.get("secure") and mobile_access.can_control(device)):
+                return json_error(403, "Управление ПК — только в защищённом режиме (HTTPS) и с доступом «Полный».")
             if not mobile_access.can_control(device) and (path not in VIEW_ONLY_PATHS or request.method != "GET"):
                 return json_error(403, "Этот телефон подключён только для просмотра. Доступ меняется в PulseDeck на ПК.")
             # Same rule as the Telegram bot: no control while the PC is locked.
@@ -653,10 +664,11 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
 
     app = web.Application(middlewares=[guard], client_max_size=MAX_FILE_BYTES + (1 << 20))
     if version == 1:
-        from modules.display_api import add_display_route
-        add_display_route(app, current_player, control_player, workstation_locked)
+        if not browser:
+            from modules.display_api import add_display_route
+            add_display_route(app, current_player, control_player, workstation_locked)
+            app.router.add_post("/api/v1/pair", pair_with_code)
         app.router.add_get("/api/v1/info", info)
-        app.router.add_post("/api/v1/pair", pair_with_code)
         for route in routes:
             if route.path in ("/api/ping", "/api/pair"):
                 continue    # replaced by /api/v1/info and code pairing

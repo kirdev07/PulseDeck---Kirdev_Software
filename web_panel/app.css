@@ -427,3 +427,70 @@ html.gestures .clock { cursor: pointer; }
   .activity { margin: 0; font-size: 14px; max-width: none; }
   .activity::before { content: "  ·  "; color: var(--text3); }
 }
+
+/* ----- «Управление ПК» (control.js): the screens of the PulseDesk app ----- */
+.pc { position: fixed; inset: 0; z-index: 3; background: var(--bg); display: flex; flex-direction: column;
+      padding: max(10px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); }
+.pc-head { display: flex; align-items: center; gap: 6px; padding-bottom: 6px; }
+.pc-head h1 { margin: 0; font-size: 20px; font-weight: 600; flex: 1; }
+.pc-name { font-size: 12px; color: var(--text3); }
+.pc-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; display: grid; align-content: start;
+           grid-template-columns: minmax(0, 1fr); gap: 10px; padding-bottom: 16px; max-width: 640px; width: 100%; margin: 0 auto; }
+.pc-tabs { display: flex; justify-content: space-around; border-top: 1px solid var(--border);
+           padding: 6px 0 max(8px, env(safe-area-inset-bottom)); max-width: 640px; width: 100%; margin: 0 auto; }
+.pc-tabs button { background: none; color: var(--text3); display: grid; justify-items: center; gap: 3px; padding: 4px 10px;
+                  font-size: 10px; border-radius: 12px; }
+.pc-tabs button .i { width: 22px; height: 22px; padding: 3px 14px; box-sizing: content-box; border-radius: 999px; }
+.pc-tabs button.on { color: var(--text); }
+.pc-tabs button.on .i { background: var(--accent); color: var(--bg); }
+.pc-section { margin: 8px 2px -2px; font-size: 13px; font-weight: 600; }
+.pc .card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 12px; }
+.pc .card.list { padding: 4px; display: grid; }
+.pc .card.empty { display: grid; justify-items: center; gap: 6px; text-align: center; color: var(--text2); padding: 24px 16px; margin-top: 12vh; }
+.pc .card.empty .i { width: 30px; height: 30px; color: var(--text3); }
+.pc .card.timer { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 15px; }
+.tile-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.tile-button { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 18px;
+               display: grid; justify-items: center; gap: 8px; padding: 16px 6px; font-size: 12px; }
+.tile-button span { color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.tile-button:active, .list-row:active { background: var(--surface2); }
+.volume-card { display: flex !important; align-items: center; gap: 10px; }
+.volume-card .num { min-width: 64px; text-align: right; font-size: 12px; color: var(--text3); }
+.icon-button.muted-on { color: var(--disabled); }
+.list-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: none; color: var(--text);
+            padding: 10px; border-radius: 14px; }
+.list-row.static { cursor: default; }
+.list-row .i { width: 22px; height: 22px; color: var(--text2); }
+.list-row .pad { width: 22px; flex: none; }
+.row-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
+.row-title { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-sub { font-size: 12px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-note { font-size: 12px; color: var(--text3); padding: 10px 12px; }
+.window-row { display: grid; gap: 6px; padding: 4px 10px 10px 44px; }
+.window-row .chips { gap: 6px; }
+.chips.small button { padding: 5px 9px; font-size: 12px; }
+@media (max-width: 420px) { .window-row { padding-left: 10px; } }
+.chip-button { background: var(--surface2); color: var(--text2); padding: 6px 12px; border-radius: 999px; font-size: 12px; flex: none; }
+.file-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+button.ghost { background: var(--surface2); color: var(--text); display: inline-flex; align-items: center; gap: 8px; }
+button.ghost .i { width: 18px; height: 18px; }
+button.primary { background: var(--text); color: var(--bg); }
+.path-row { display: flex; align-items: center; gap: 4px; }
+.path-row .path { flex: 1; min-width: 0; font-size: 12px; color: var(--text2); direction: rtl; text-align: left;
+                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.search-row { display: flex; gap: 6px; align-items: center; }
+.text-input { width: 100%; box-sizing: border-box; font: inherit; font-size: 16px; color: var(--text); background: var(--surface2);
+              border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+/* dialogs of control.js */
+.sheet.dialog { z-index: 7; }
+.dialog-title { margin: 0; font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
+.sheet.dialog p { margin: 0; font-size: 14px; }
+.dialog-buttons { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.dialog-buttons button { flex: 1 1 auto; }
+.choice { display: grid; gap: 6px; }
+.choice button { background: var(--surface2); color: var(--text2); text-align: left; }
+.choice button.on { background: var(--text); color: var(--bg); }
+/* the PC screenshot, full screen */
+.shot { position: fixed; inset: 0; z-index: 8; background: #000; display: grid; place-items: center; }
+.shot img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.shot-hint { position: absolute; bottom: max(14px, env(safe-area-inset-bottom)); color: #aaa; font-size: 12px; }

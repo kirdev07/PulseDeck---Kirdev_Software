@@ -18,7 +18,8 @@ Security:
   * browser tokens are a separate kind (mobile_access.KIND_WEB): they open the web panel and
     nothing else — never the TLS API of the apps; app tokens do not open the panel;
   * control needs an HTTPS connection AND a browser paired over HTTPS (its token never
-    crossed the network unencrypted) AND «Полный»; nothing but music can be run from it.
+    crossed the network unencrypted) AND «Полный»: music on the panel, and «Управление ПК»
+    (/pc/api/v1/…, the handlers of the PulseDesk app) with the same rule.
 """
 import asyncio
 import logging
@@ -37,9 +38,9 @@ logger = logging.getLogger("pulse_pc.services.web_panel")
 WEB_ROOT = Path(config.RESOURCE_DIR) / "web_panel"
 FILES = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/app.css": "app.css",
          "/logo.svg": "logo.svg", "/icon.png": "icon.png", "/manifest.webmanifest": "manifest.webmanifest",
-         "/sw.js": "sw.js"}
+         "/sw.js": "sw.js", "/control.js": "control.js", "/lockscreen.js": "lockscreen.js", "/silence.wav": "silence.wav"}
 TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
-         ".png": "image/png", ".webmanifest": "application/manifest+json"}
+         ".png": "image/png", ".webmanifest": "application/manifest+json", ".wav": "audio/wav"}
 METRICS_SECONDS = 2.0
 MEDIA_SECONDS = 1.0
 MEDIA_RESYNC_SECONDS = 5.0
@@ -55,7 +56,8 @@ SECURITY_HEADERS = {
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
     # https: — the HTTP setup page checks whether the phone already trusts the HTTPS panel.
-    "Content-Security-Policy": ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
+    # blob: — the screenshot of the PC and downloaded files are shown/saved from memory.
+    "Content-Security-Policy": ("default-src 'self'; img-src 'self' data: blob:; style-src 'self'; script-src 'self'; "
                                 "connect-src 'self' ws: wss: https:; frame-ancestors 'none'"),
 }
 
@@ -64,7 +66,7 @@ def assets_version():
     """Short fingerprint of the page's script and style (changes with every edit)."""
     import hashlib
     digest = hashlib.sha256()
-    for name in ("app.js", "app.css"):
+    for name in ("app.js", "app.css", "control.js", "lockscreen.js"):
         try:
             digest.update((WEB_ROOT / name).read_bytes())
         except OSError:
@@ -81,7 +83,7 @@ def may_control(device, secure_connection):
     return bool(secure_connection and (device or {}).get("secure") and mobile_access.can_control(device))
 
 
-def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_port=0):
+def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_port=0, features_getter=lambda: None):
     from modules.display_api import MetricsReader, _same_track, media_message, system_volume_state
     from modules.local_api import is_private_ip
     from modules.monitor import workstation_locked
@@ -419,6 +421,10 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
     app.router.add_post("/push/unsubscribe", push_unsubscribe)
     for path in FILES:
         app.router.add_get(path, static)
+    # «Управление ПК»: the handlers of the PulseDesk app (power, windows, programs, files,
+    # processes, events) under /pc/api/v1/…, for browsers paired over HTTPS with «Полный».
+    from modules import local_api
+    app.add_subapp("/pc", local_api.make_app(features_getter, version=1, browser=True, prefix="/pc"))
     return app
 
 
@@ -485,7 +491,8 @@ class WebPanelService:
         from modules.local_api import lan_addresses
         addresses = tuple(await asyncio.to_thread(lan_addresses))
         https = web_settings.https_port(data["port"])
-        app = make_app(lambda n: self._post(clients=n), config_dir=self.config_dir, https_port=https)
+        app = make_app(lambda n: self._post(clients=n), config_dir=self.config_dir, https_port=https,
+                       features_getter=lambda: self.runtime.features)
         runner = web.AppRunner(app, access_log=None)
         await runner.setup()
         try:

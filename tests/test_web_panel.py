@@ -238,6 +238,22 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
                 break
         self.assertEqual(ws.close_code, service.CLOSE_REVOKED)
 
+    async def test_pc_control_only_for_trusted_browsers(self):
+        token = await self.full_access(secure_pairing=True)
+        app_token = mobile_access.add_device("PulseDesk")
+        view_token = await self.paired()
+        url, auth = "/pc/api/v1/history", lambda t: {"Authorization": f"Bearer {t}"}
+        with mock.patch("modules.transfer_history.load_history", return_value=[]),                 mock.patch("modules.monitor.workstation_locked", return_value=False):
+            self.assertEqual((await self.client.get(url, headers=auth(token))).status, 403)      # plain HTTP
+            with mock.patch.object(web.BaseRequest, "secure", new_callable=mock.PropertyMock, return_value=True):
+                response = await self.client.get(url, headers=auth(token))
+                self.assertEqual(response.status, 200)
+                self.assertEqual((await response.json())["history"], [])
+                self.assertEqual((await self.client.get(url, headers=auth(app_token))).status, 401)   # app tokens: no
+                self.assertEqual((await self.client.get(url, headers=auth(view_token))).status, 403)  # «Просмотр»
+                self.assertEqual((await self.client.get(url)).status, 401)
+                self.assertEqual((await self.client.post("/pc/api/v1/pair", json={"code": "1"})).status, 404)
+
     async def test_internet_addresses_are_refused(self):
         with mock.patch("modules.local_api.is_private_ip", return_value=False):
             app = service.make_app(pairing=self.pairing)
