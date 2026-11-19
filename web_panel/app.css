@@ -494,3 +494,13 @@ button.primary { background: var(--text); color: var(--bg); }
 .shot { position: fixed; inset: 0; z-index: 8; background: #000; display: grid; place-items: center; }
 .shot img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .shot-hint { position: absolute; bottom: max(14px, env(safe-area-inset-bottom)); color: #aaa; font-size: 12px; }
+
+/* ----- Настройки: main page with sections, each section a page with «Назад» ----- */
+.sheet-head .back { margin: -8px 4px -8px -8px; }
+.sheet-head h2 { flex: 1; }
+.settings-list { display: grid; background: var(--surface2); border-radius: 16px; padding: 4px; }
+.settings-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: none;
+                color: var(--text); padding: 11px 10px; border-radius: 12px; }
+.settings-row:active { background: var(--border); }
+.settings-row .i { width: 22px; height: 22px; color: var(--text2); }
+.settings-row .chev { color: var(--text3); font-size: 22px; line-height: 1; }

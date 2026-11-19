@@ -177,7 +177,11 @@ class DisplaySocketTests(unittest.TestCase):
                 mobile_access.remove_device(device)
                 for _ in range(40):
                     message = await asyncio.wait_for(ws.receive(), 10)
-                    if message.type in (aiohttp.WSMsgType.CLOSE, aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSING):
+                    # The code the PC sent in its close frame: aiohttp's ws.close_code turns into 1006
+                    # when its own reply hits the already closed socket, which the panel never sees.
+                    if message.type == aiohttp.WSMsgType.CLOSE:
+                        return message.data
+                    if message.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.CLOSING):
                         return ws.close_code
                 return None
         self.assertEqual(self.run_client(scenario), display_api.CLOSE_REVOKED)

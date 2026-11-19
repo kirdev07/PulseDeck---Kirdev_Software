@@ -76,6 +76,19 @@ class PushLogicTest(unittest.TestCase):
         plugged.check(on_power, subs)
         self.assertEqual(plugged.check(on_power, subs), [])                   # charging: no battery notice
 
+    def test_the_disk_chosen_on_the_phone_is_watched(self):
+        monitor = push.Monitor(self.dir, "PC")
+        m = metrics()
+        m["disks"] = [{"name": "C:", "total": 100, "free": 50}, {"name": "D:", "total": 100, "free": 3}]
+        subs = {"d1": {"subscription": SUB, "limits": push.clean_limits({}), "alerts": True, "disk": "D:"},
+                "d2": {"subscription": SUB, "limits": push.clean_limits({}), "alerts": True}}
+        monitor.check(m, subs)
+        sent = monitor.check(m, subs)
+        self.assertEqual([(d, tag) for d, _s, tag, _t in sent], [("d1", "disk")])
+        self.assertIn("D:", sent[0][3])
+        monitor.check(m, {})                                                 # unsubscribed: state dropped
+        self.assertEqual(monitor.state, {})
+
     def test_gone_subscription_is_dropped(self):
         from pywebpush import WebPushException
         mobile_access.add_device("Браузер (iPhone)", mobile_access.KIND_WEB, mobile_access.ACCESS_FULL, True)

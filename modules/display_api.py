@@ -176,6 +176,7 @@ def add_display_route(app, current_player, control_player, workstation_locked):
         logger.info("Панель подключена: %s (%s)", (device or {}).get("name", "?"), request.remote)
         reader = MetricsReader()
         send_lock = asyncio.Lock()
+        closing = asyncio.Event()
         wants = {"metrics": True, "interval": METRICS_SECONDS}
 
         async def send(message):
@@ -221,13 +222,16 @@ def add_display_route(app, current_player, control_player, workstation_locked):
                     logger.info("Доступ панели отозван, соединение закрыто.")
                     # Under the send lock: a close racing a send can abort the socket (1006),
                     # and the panel would never learn that it was revoked.
+                    closing.set()
                     async with send_lock:
-                        await ws.close(code=CLOSE_REVOKED, message=b"revoked")
+                        await asyncio.wait_for(ws.close(code=CLOSE_REVOKED, message=b"revoked"), 10)
                     return
 
         await send({"type": "hello", "protocol": PROTOCOL, "app": "PulseDeck", "name": socket.gethostname(),
                     "metrics_interval": METRICS_SECONDS, "commands": sorted(COMMANDS)})
-        tasks = [asyncio.create_task(loop()) for loop in (metrics_loop, media_loop, auth_loop)]
+        loops = (metrics_loop, media_loop, auth_loop)
+        AUTH = loops.index(auth_loop)
+        tasks = [asyncio.create_task(loop()) for loop in loops]
         try:
             async for msg in ws:
                 if msg.type != WSMsgType.TEXT:
@@ -261,8 +265,11 @@ def add_display_route(app, current_player, control_player, workstation_locked):
                 else:
                     await send({"type": "error", "code": "bad_message", "message": "Неизвестный тип сообщения."})
         finally:
+            # A revocation close in progress is let finish (cancelled half-way, the phone would
+            # see a broken link, 1006, instead of «revoked», 4001); everything else stops now.
             for task in tasks:
-                task.cancel()
+                if not (task is tasks[AUTH] and closing.is_set()):
+                    task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             reader.close()
             logger.info("Панель отключена (%s)", request.remote)

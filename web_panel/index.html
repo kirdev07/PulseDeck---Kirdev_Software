@@ -45,6 +45,7 @@
     <symbol id="i-upload" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v3a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-3"/></symbol>
     <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5"/><path d="M4 16v3a1.5 1.5 0 0 0 1.5 1.5h13A1.5 1.5 0 0 0 20 19v-3"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 6l-6 6l6 6"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
     <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 14.5l6-6l6 6"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6l6-6"/></symbol>
@@ -170,25 +171,28 @@
   <div id="sheet" class="sheet" hidden>
     <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
       <div class="sheet-head">
+        <button type="button" id="settings-back" class="icon-button back" aria-label="Назад" hidden><svg class="i"><use href="#i-back"/></svg></button>
         <h2 id="sheet-title">Настройки</h2>
         <button type="button" id="close-settings" class="icon-button" aria-label="Закрыть"><svg class="i"><use href="#i-close"/></svg></button>
       </div>
-      <!-- Разделы кастомизации строит app.js (buildSettings). -->
+      <!-- Главную страницу и разделы строит app.js (buildSettings); постоянные части ниже
+           переносятся в свой раздел и обратно в #prefs-holder. -->
       <div id="prefs" class="prefs"></div>
-      <label class="field">
-        <span class="label">Источник музыки</span>
-        <select id="source" aria-label="Что показывать и чем управлять"><option value="">Автоматически</option></select>
-      </label>
-      <div class="field row">
-        <span>Не гасить экран</span>
-        <button type="button" id="awake" class="switch" role="switch" aria-checked="false"><i></i></button>
+      <div id="prefs-holder" hidden>
+        <label class="field" id="field-source">
+          <span class="label">Источник музыки</span>
+          <select id="source" aria-label="Что показывать и чем управлять"><option value="">Автоматически</option></select>
+        </label>
+        <div class="field row" id="field-awake">
+          <span>Не гасить экран</span>
+          <button type="button" id="awake" class="switch" role="switch" aria-checked="false"><i></i></button>
+        </div>
+        <div class="field" id="field-connection">
+          <div id="secureinfo" class="info"></div>
+          <button type="button" id="forget" class="link danger">Отключить этот телефон</button>
+          <div class="version" id="version">Веб-панель __VERSION__</div>
+        </div>
       </div>
-      <div class="field">
-        <span class="label">Подключение</span>
-        <div id="secureinfo" class="info"></div>
-      </div>
-      <button type="button" id="forget" class="link danger">Отключить этот телефон</button>
-      <div class="version" id="version">Веб-панель __VERSION__</div>
     </div>
   </div>
 

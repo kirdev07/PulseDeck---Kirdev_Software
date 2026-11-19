@@ -191,7 +191,7 @@ function pcControl() {
     slider.addEventListener('input', () => { state.volumeBusy = performance.now(); value.textContent = slider.value; });
     slider.addEventListener('change', () => { state.volumeBusy = performance.now(); send('volume', Number(slider.value)); });
     const mute = el('button', { type: 'button', class: `icon-button${vol.muted ? ' muted-on' : ''}`, 'aria-label': 'Без звука',
-      onclick: () => pcRun('', async () => { const r = await pcPost('volume', { muted: !vol.muted }); return r; }) }, icon('i-volume'));
+      onclick: () => pcRun('', () => pcPost('volume', { muted: !(state.volume && state.volume.muted) })) }, icon('i-volume'));
     parts.push(section('Громкость ПК'), el('div', { class: 'card volume-card' }, mute, slider, value));
   }
 
@@ -409,3 +409,12 @@ function pcEventList() {
 
 // The access may change while the screen is open (revoked, «Полный» switched on, PC locked).
 function pcAccessChanged() { if (pc.open) { renderPc(); pcLoadTab(); } }
+
+// The PC volume changed (slider, mute, keys on the PC): redraw the card, not while it is dragged.
+let pcVolumeShown = '';
+function pcVolumeChanged() {
+  const now = JSON.stringify(state.volume);
+  if (now === pcVolumeShown) return;
+  pcVolumeShown = now;
+  if (pc.open && pc.tab === 'control' && pcAllowed() && performance.now() - state.volumeBusy > 1500) renderPc();
+}

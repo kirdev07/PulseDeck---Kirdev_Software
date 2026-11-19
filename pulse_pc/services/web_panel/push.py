@@ -102,21 +102,27 @@ def valid_subscription(sub):
         all(isinstance(keys.get(k), str) and 10 < len(keys[k]) < 200 for k in ("p256dh", "auth"))
 
 
-def subscribe(config_dir, device_id, subscription, limits, alerts=True):
+def clean_disk(name):
+    """«D:» chosen for the tile on the phone ('' = the first disk)."""
+    return name if isinstance(name, str) and len(name) <= 10 else ""
+
+
+def subscribe(config_dir, device_id, subscription, limits, alerts=True, disk=""):
     with _lock:
         data = _load(config_dir)
         data[device_id] = {"subscription": {"endpoint": subscription["endpoint"], "keys": {
             "p256dh": subscription["keys"]["p256dh"], "auth": subscription["keys"]["auth"]}},
-            "limits": clean_limits(limits), "alerts": bool(alerts)}
+            "limits": clean_limits(limits), "alerts": bool(alerts), "disk": clean_disk(disk)}
         _save(config_dir, data)
 
 
-def update(config_dir, device_id, limits, alerts):
+def update(config_dir, device_id, limits, alerts, disk=""):
     with _lock:
         data = _load(config_dir)
         if device_id in data:
             data[device_id]["limits"] = clean_limits(limits)
             data[device_id]["alerts"] = bool(alerts)
+            data[device_id]["disk"] = clean_disk(disk)
             _save(config_dir, data)
 
 
@@ -159,10 +165,10 @@ def send(config_dir, device_id, subscription, title, body, tag):
     return False
 
 
-def values(m):
-    """The watched values from a display_api metrics message."""
+def values(m, disk_name=""):
+    """The watched values from a display_api metrics message (the disk chosen on the phone, else the first)."""
     disks = m.get("disks") or []
-    disk = disks[0] if disks else None
+    disk = next((d for d in disks if d.get("name") == disk_name), disks[0] if disks else None)
     gpu, battery = m.get("gpu") or {}, m.get("battery")
     total, used = gpu.get("memory_total"), gpu.get("memory_used")
     return {
@@ -183,11 +189,13 @@ class Monitor:
         self.state = {}                 # (device_id, key) -> {"count", "active"}
 
     def check(self, metrics, subs):
-        found = values(metrics)
         sent = []
+        for key in [k for k in self.state if k[0] not in subs]:     # revoked / unsubscribed phones
+            del self.state[key]
         for device_id, record in subs.items():
             if not record.get("alerts", True):
                 continue
+            found = values(metrics, record.get("disk", ""))
             for key, over in LIMIT_KEYS.items():
                 value, limit = found.get(key), record["limits"].get(key, DEFAULT_LIMITS[key])
                 st = self.state.setdefault((device_id, key), {"count": 0, "active": False})

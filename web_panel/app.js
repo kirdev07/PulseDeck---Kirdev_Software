@@ -80,7 +80,8 @@ const prefs = loadPrefs();
 function loadPrefs() {
   let saved = {};
   try { saved = JSON.parse(store.get(PREFS_STORE) || '{}') || {}; } catch (e) { saved = {}; }
-  const result = { ...DEFAULTS, ...saved };
+  const result = { ...DEFAULTS };
+  for (const key of Object.keys(DEFAULTS)) if (key in saved) result[key] = saved[key];   // removed settings are dropped
   const old = store.get('pulsedeck.theme');           // before the preferences object
   if (!saved.theme && old) result.theme = old === 'light' ? 'light' : 'dark';
   if (saved.wave === false && !saved.idle) result.idle = 'none';      // the old «Волна» switch
@@ -119,7 +120,6 @@ function applyPrefs() {
   const clock = CLOCK_COLORS[prefs.clockColor];
   if (clock) root.style.setProperty('--clock-color', clock); else root.style.removeProperty('--clock-color');
   if (prefs.idle !== 'none' && !IDLE[prefs.idle]) prefs.idle = 'wave';     // an unknown or removed saved choice
-  $('wave').dataset.kind = prefs.idle;
   root.dataset.idleSize = prefs.idleSize;
   root.classList.toggle('no-motion', !prefs.motion);
   root.classList.toggle('pulse', prefs.pulse && prefs.motion);
@@ -142,6 +142,7 @@ function applyPrefs() {
 }
 
 function forgetToken(reason) {
+  if (prefs.push) { disablePush(); prefs.push = false; savePrefs(); }   // the subscription belonged to the old pairing
   store.drop(TOKEN_STORE);
   state.token = '';
   if (state.ws) state.ws.close();
@@ -273,13 +274,13 @@ function shortGpu(name) {
 
 // ----- history for the tiles' sparklines and the detail graphs: the last ~3 minutes -----
 const HISTORY_POINTS = 90;
-const history = { cpu: [], gpu: [], ram: [], vram: [], down: [], up: [] };
+const samples = { cpu: [], gpu: [], ram: [], vram: [], down: [], up: [] };   // not «history»: that is window.history
 function remember(m) {
   const vram = m.gpu.memory_total && m.gpu.memory_used != null ? 100 * m.gpu.memory_used / m.gpu.memory_total : null;
   const values = { cpu: m.cpu.load, gpu: m.gpu.load, ram: m.ram.percent, vram, down: m.net.down, up: m.net.up };
   for (const [key, value] of Object.entries(values)) {
-    history[key].push(value);
-    if (history[key].length > HISTORY_POINTS) history[key].shift();
+    samples[key].push(value);
+    if (samples[key].length > HISTORY_POINTS) samples[key].shift();
   }
 }
 const SERIES = { cpu: ['cpu'], gpu: ['gpu'], ram: ['ram'], vram: ['vram'], net: ['down', 'up'] };
@@ -294,9 +295,9 @@ function drawGraph(canvas, keys, { fill = true, percent = true } = {}) {
   c.setTransform(ratio, 0, 0, ratio, 0, 0);
   c.clearRect(0, 0, width, height);
   const ink = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
-  const top = percent ? 100 : Math.max(1, ...keys.flatMap((k) => history[k].filter((v) => v != null)));
+  const top = percent ? 100 : Math.max(1, ...keys.flatMap((k) => samples[k].filter((v) => v != null)));
   keys.forEach((key, index) => {
-    const data = history[key];
+    const data = samples[key];
     if (data.length < 2) return;
     const step = width / (HISTORY_POINTS - 1), start = width - (data.length - 1) * step;
     c.beginPath();
@@ -430,6 +431,7 @@ function alertValues(m) {
     vram: m.gpu.memory_total && m.gpu.memory_used != null ? 100 * m.gpu.memory_used / m.gpu.memory_total : null,
     disk: disk && disk.total ? 100 * disk.free / disk.total : null,
     battery: m.battery && !m.battery.plugged ? m.battery.percent : null,
+    diskName: disk ? disk.name : '',
   };
 }
 function checkAlerts(m) {
@@ -443,7 +445,7 @@ function checkAlerts(m) {
     if (!st.active && st.count >= ALERT_SAMPLES) {
       st.active = true;
       const text = info.over ? `${info.title}: ${Math.round(value)}% (порог ${limit}%)`
-        : key === 'disk' ? `Мало места: свободно ${Math.round(value)}% на ${(m.disks || [])[0]?.name || 'диске'}`
+        : key === 'disk' ? `Мало места: свободно ${Math.round(value)}% на ${values.diskName || 'диске'}`
           : `Батарея ПК: ${Math.round(value)}%, подключите зарядку`;
       notify(`PulseDeck · ${$('pcname').textContent}`, text, key);
     } else if (st.active && (fine || !prefs.alerts)) {
@@ -479,7 +481,7 @@ function base64ToBytes(text) {
 }
 async function postPush(path, extra) {
   const response = await fetch(path, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ t: state.token, limits: prefs.limits, alerts: prefs.alerts, ...extra }) });
+    body: JSON.stringify({ t: state.token, limits: prefs.limits, alerts: prefs.alerts, disk: prefs.disk, ...extra }) });
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
   return data;
@@ -648,6 +650,7 @@ function showMedia(msg) {
   if (prefs.tiles.includes('volume')) renderMetrics();
   if (!coverKey) { coverColor = ''; applyCoverColor(); }
   updateLockScreen();
+  pcVolumeChanged();
 }
 
 function showSessions(items) {
@@ -1251,7 +1254,9 @@ function startIdle() {
       drawIdle(kind, context, width, height, still ? 0 : now, ink);
       if (SOFT_EDGES.has(kind)) softEdges(context, width, height);
     }
-    requestAnimationFrame(frame);
+    // Nothing to draw (music plays, «Нет», page hidden): look again in half a second, not 60 times a second.
+    if (canvas.hidden || document.hidden || !IDLE[prefs.idle]) setTimeout(() => requestAnimationFrame(frame), 500);
+    else requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 }
@@ -1432,6 +1437,7 @@ function connect() {
       }
       $('pcname').textContent = msg.name || 'ПК';
       $('pc-name').textContent = msg.name || '';
+      if ($('source').value) send('source', $('source').value);     // a new socket starts with «Автоматически»
       only('panel');
       setStatus(true);
     } else if (msg.type === 'access') {
@@ -1477,6 +1483,10 @@ function scheduleReconnect() {
   const delay = Math.min(15000, 1000 * 2 ** state.retry++);
   setTimeout(() => { if (!state.ws && state.token) connect(); }, delay);
 }
+// The phone woke up / the page came back: try at once instead of waiting for the back-off.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && state.token && !state.ws && !$('panel').hidden) { state.retry = 0; connect(); }
+});
 
 let toastTimer = 0;
 function toast(text) {
@@ -1597,11 +1607,54 @@ function pref(label, control) {
   return el('div', { class: 'pref' }, el('span', { class: 'label', text: label }), control);
 }
 
+// ----- Настройки: a short main page (layout and theme at hand + sections), each section is a
+// page of its own with «Назад», like the settings of a phone. The open page is rebuilt in
+// place after every change (the scroll stays). -----
+let settingsPage = '';
+const SETTINGS_PAGES = {
+  look: { title: 'Оформление', icon: 'i-image', sub: () => `${prefs.theme === 'light' ? 'Белая' : 'Тёмная'} тема, цвета, шрифт` },
+  clock: { title: 'Часы', icon: 'i-panel', sub: () => [prefs.clock24 ? '24 ч' : '12 ч', prefs.seconds && 'секунды', prefs.showDate && 'дата'].filter(Boolean).join(', ') },
+  player: { title: 'Плеер', icon: 'i-music', sub: () => (prefs.lockScreen ? 'Экран блокировки включён' : 'Вид, источник, экран блокировки, жесты') },
+  tiles: { title: 'Плитки', icon: 'i-cpu', sub: () => `Показано: ${prefs.tiles.length}` },
+  alerts: { title: 'Предупреждения', icon: 'i-bell', sub: () => (prefs.alerts ? 'Пороги и уведомления' : 'Выключены') },
+  motion: { title: 'Анимации', icon: 'i-pulse', sub: () => (prefs.idle === 'none' ? 'Без анимации' : (IDLE[prefs.idle] || {}).name || '') },
+  screen: { title: 'Экран', icon: 'i-remote', sub: () => 'Не гасить, выгорание, без связи' },
+  connection: { title: 'Подключение', icon: 'i-lock', sub: () => (state.secure ? (state.control ? 'HTTPS, полный доступ' : 'HTTPS, просмотр') : 'Без шифрования, просмотр') },
+};
+
+function openSettings(page = '') {
+  settingsPage = page;
+  buildSettings();
+  $('sheet').hidden = false;
+  $('sheet').querySelector('.sheet-card').scrollTop = 0;
+}
+
 function buildSettings() {
-  const box = $('prefs');
+  const card = $('sheet').querySelector('.sheet-card');
+  const scroll = card.scrollTop;
+  const page = SETTINGS_PAGES[settingsPage] ? settingsPage : '';
+  $('sheet-title').textContent = page ? SETTINGS_PAGES[page].title : 'Настройки';
+  $('settings-back').hidden = !page;
+  for (const id of ['field-source', 'field-awake', 'field-connection']) $('prefs-holder').append($(id));   // park the fixed parts
+  $('prefs').replaceChildren(...(page ? settingsSections(page) : settingsMain()).filter(Boolean));
+  card.scrollTop = scroll;
+}
+
+function settingsMain() {
+  return [
+    pref('Раскладка', chips('layout', [['panel', 'Panel'], ['clock', 'Часы'], ['music', 'Музыка'], ['monitoring', 'Мониторинг']])),
+    pref('Тема', chips('theme', [['dark', 'Тёмная'], ['light', 'Белая']])),
+    el('div', { class: 'settings-list' }, ...Object.entries(SETTINGS_PAGES).map(([id, p]) =>
+      el('button', { type: 'button', class: 'settings-row', onclick: () => openSettings(id) }, icon(p.icon),
+        el('span', { class: 'row-text' }, el('span', { class: 'row-title', text: p.title }), el('span', { class: 'row-sub', text: p.sub() })),
+        el('span', { class: 'chev', text: '›' })))),
+  ];
+}
+
+function settingsSections(page) {
   const accentInk = currentTheme() === 'light' ? '#0a0a0a' : '#ffffff';
-  const sections = [
-    el('h3', { text: 'Тема и цвет' }),
+  const note = (text) => el('div', { class: 'note-text', text });
+  if (page === 'look') return [
     pref('Тема', chips('theme', [['dark', 'Тёмная'], ['light', 'Белая']])),
     toggle('themeByTime', 'Белая днём, тёмная вечером'),
     prefs.themeByTime ? el('div', { class: 'times-row' }, 'Белая с',
@@ -1610,82 +1663,73 @@ function buildSettings() {
     pref('Цвет акцента', chips('accent', [['white', 'Как текст', accentInk], ['blue', 'Синий', '#4c8dff'],
       ['green', 'Зелёный', '#34c77b'], ['purple', 'Фиолетовый', '#a679ff'], ['orange', 'Оранжевый', '#ff9f43'],
       ['red', 'Красный', '#ff5c5c'], ['pink', 'Розовый', '#ff6fb5']], true)),
+    toggle('coverColors', 'Цвет акцента из обложки трека'),
+    toggle('coverBackdrop', 'Размытая обложка на фоне'),
     currentTheme() === 'light'
       ? pref('Фон (белая тема)', chips('bgLight', BACKGROUNDS.light, true))
       : pref('Фон (тёмная тема)', chips('bgDark', BACKGROUNDS.dark, true)),
-    pref('Цвет часов', chips('clockColor', [['ink', 'Как текст', accentInk], ['accent', 'Как акцент', 'var(--accent)'],
+    pref('Шрифт интерфейса', chips('uiFont', FONTS)),
+  ];
+  if (page === 'clock') return [
+    pref('Цвет', chips('clockColor', [['ink', 'Как текст', accentInk], ['accent', 'Как акцент', 'var(--accent)'],
       ...Object.entries(CLOCK_COLORS).filter(([k]) => k !== 'accent').map(([k, v]) => [k, COLOR_NAMES[k] || k, v])], true)),
-
-    el('h3', { text: 'Шрифты' }),
-    pref('Интерфейс', chips('uiFont', FONTS)),
-    pref('Часы', fontPicker()),
-
-    el('h3', { text: 'Раскладка' }),
-    chips('layout', [['panel', 'Panel'], ['clock', 'Часы'], ['music', 'Музыка'], ['monitoring', 'Мониторинг']]),
-
-    el('h3', { text: 'Часы' }),
+    pref('Шрифт', fontPicker()),
     pref('Толщина', chips('clockWeight', [['thin', 'Тонкие'], ['regular', 'Обычные'], ['bold', 'Жирные']])),
     pref('Размер', chips('clockSize', [['s', 'S'], ['m', 'M'], ['l', 'L']])),
     toggle('clock24', '24 часа'),
     toggle('seconds', 'Секунды'),
     toggle('showDate', 'Дата'),
-
-    el('h3', { text: 'Плитки внизу' }),
+    toggle('showActivity', 'Что сейчас открыто на ПК'),
+    prefs.showActivity ? note('Под датой: активное приложение ПК. Название окна приходит только в защищённом режиме (HTTPS) — в нём бывает личное.') : null,
+  ];
+  if (page === 'player') return [
+    toggle('playerAlways', 'Показывать, даже когда ничего не играет'),
+    toggle('showCover', 'Обложка'),
+    toggle('showProgress', 'Полоса времени'),
+    toggle('waveSeek', 'Ползунок волной, пока играет'),
+    toggle('nowPlaying', 'Полоски «играет» у названия'),
+    toggle('showVolume', 'Громкость ПК'),
+    $('field-source'),
+    el('h3', { text: 'Экран блокировки' }),
+    lockScreenSupported() ? toggle('lockScreen', 'Плеер на экране блокировки') : note('Этот браузер не умеет показывать плеер на экране блокировки.'),
+    prefs.lockScreen ? note(state.control
+      ? 'Трек ПК виден на экране блокировки и в Пункте управления; кнопки там переключают музыку на ПК. Пока включено, страница играет тишину — музыка в других приложениях телефона встанет на паузу.'
+      : 'Трек ПК виден на экране блокировки. Кнопки там заработают в защищённом режиме с доступом «Полный».') : null,
+    el('h3', { text: 'Жесты' }),
+    toggle('gestures', 'Жесты на плеере и часах'),
+    prefs.gestures ? note('По плееру: свайп влево — следующий трек, вправо — предыдущий, вверх/вниз — громкость ПК, двойной тап — пауза. Тап по часам — следующая раскладка.') : null,
+  ];
+  if (page === 'tiles') return [
     tilesEditor(),
     prefs.tiles.includes('disk') && (state.metrics?.disks || []).length > 1
       ? pref('Какой диск', el('select', { onchange: (e) => set('disk', e.target.value) },
         ...state.metrics.disks.map((d) => { const o = new Option(d.label ? `${d.name} ${d.label}` : d.name, d.name); o.selected = d.name === (prefs.disk || state.metrics.disks[0].name); return o; })))
       : null,
-
     pref('Если плитки не помещаются', chips('tileRows', [['wrap', 'Второй ряд'], ['scroll', 'Листать пальцем']])),
     toggle('sparks', 'Мини-графики в плитках'),
-    el('div', { class: 'note-text', text: 'Нажмите на плитку — откроются подробности: большой график, ядра, все диски.' }),
-
-    el('h3', { text: 'Предупреждения' }),
+    note('Нажмите на плитку — откроются подробности: большой график, ядра, все диски.'),
+  ];
+  if (page === 'alerts') return [
     toggle('alerts', 'Подсвечивать плитку и сообщать'),
     prefs.alerts ? el('div', { class: 'limits' }, ...Object.entries(LIMITS).map(([key, info]) => limitRow(key, info))) : null,
-    prefs.alerts ? el('div', { class: 'note-text',
-      text: 'Сообщение приходит, если значение держится за порогом ~10 секунд. Диск и батарея — когда осталось меньше порога.' }) : null,
+    prefs.alerts ? note('Сообщение приходит, если значение держится за порогом ~10 секунд. Диск и батарея — когда осталось меньше порога.') : null,
     toggle('alertOffline', 'Сообщать, если пропала связь с ПК'),
-
     el('h3', { text: 'Уведомления' }),
     notifyRow(),
-
-    el('h3', { text: 'Цвета из обложки' }),
-    toggle('coverColors', 'Цвет акцента из обложки трека'),
-    toggle('coverBackdrop', 'Размытая обложка на фоне'),
-
-    el('h3', { text: 'Жесты' }),
-    toggle('gestures', 'Жесты на плеере и часах'),
-    prefs.gestures ? el('div', { class: 'note-text', text: 'По плееру: свайп влево — следующий трек, вправо — предыдущий, вверх/вниз — громкость ПК, двойной тап — пауза. Тап по часам — следующая раскладка.' }) : null,
-
-    el('h3', { text: 'Сейчас на ПК' }),
-    toggle('showActivity', 'Показывать активное приложение'),
-    prefs.showActivity ? el('div', { class: 'note-text', text: 'Под датой: что открыто на ПК. Название окна приходит только в защищённом режиме (HTTPS) — в нём бывает личное.' }) : null,
-
-    el('h3', { text: 'Плеер' }),
-    toggle('playerAlways', 'Показывать, даже когда ничего не играет'),
-    toggle('nowPlaying', 'Полоски «играет» рядом с названием трека'),
-    toggle('waveSeek', 'Ползунок трека волной, пока играет'),
-    lockScreenSupported() ? toggle('lockScreen', 'Плеер на экране блокировки') : null,
-    prefs.lockScreen ? el('div', { class: 'note-text', text: state.control
-      ? 'Трек ПК виден на экране блокировки и в Пункте управления; кнопки там переключают музыку на ПК. Пока включено, страница играет тишину — музыка в других приложениях телефона встанет на паузу.'
-      : 'Трек ПК виден на экране блокировки. Кнопки там заработают в защищённом режиме с доступом «Полный».' }) : null,
-    toggle('showCover', 'Обложка'),
-    toggle('showProgress', 'Полоса времени'),
-    toggle('showVolume', 'Громкость ПК'),
-
-    el('h3', { text: 'Анимации' }),
+  ];
+  if (page === 'motion') return [
     pref('Когда ничего не играет', chips('idle', [...Object.entries(IDLE).map(([k, v]) => [k, v.name]), ['none', 'Нет']])),
     prefs.idle !== 'none' ? pref('Размер анимации', chips('idleSize', Object.entries(IDLE_SIZES))) : null,
     toggle('motion', 'Плавные переходы и анимации'),
     toggle('pulse', 'Обложка пульсирует, пока играет'),
-
-    el('h3', { text: 'Экран' }),
+  ];
+  if (page === 'screen') return [
+    $('field-awake'),
     toggle('burnIn', 'Защита от выгорания (AMOLED)'),
     toggle('offlineClock', 'Без связи — только часы'),
   ];
-  box.replaceChildren(...sections.filter(Boolean));
+  if (page === 'connection') return [$('field-connection')];
+  return [];
 }
 
 function limitRow(key, info) {
@@ -1767,6 +1811,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   const seek = $('seek');
   seek.addEventListener('input', () => { state.seeking = true; $('pos').textContent = clockTime(Number(seek.value)); startSeekWave(); });
+  for (const type of ['pointerup', 'pointercancel', 'touchend', 'touchcancel', 'blur']) {
+    seek.addEventListener(type, () => { setTimeout(() => { state.seeking = false; }, 400); });
+  }
   seek.addEventListener('change', () => {
     state.seeking = false;
     send('seek', Number(seek.value));
@@ -1782,7 +1829,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (prefs.lockScreen) startLockScreen();          // the browser lets the sound start on the first tap
 
   // settings sheet
-  $('open-settings').addEventListener('click', () => { buildSettings(); $('sheet').hidden = false; });
+  $('open-settings').addEventListener('click', () => openSettings());
+  $('settings-back').addEventListener('click', () => { settingsPage = ''; buildSettings(); });
   $('close-settings').addEventListener('click', () => { $('sheet').hidden = true; });
   $('close-detail').addEventListener('click', () => { $('detail').hidden = true; });
   $('detail').addEventListener('click', (event) => { if (event.target === $('detail')) $('detail').hidden = true; });

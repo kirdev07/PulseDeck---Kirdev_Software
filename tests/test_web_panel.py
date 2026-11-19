@@ -124,7 +124,9 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response.status, 200)
         self.assertIn("PulseDeck", await response.text())
         self.assertIn("frame-ancestors 'none'", response.headers["Content-Security-Policy"])
-        self.assertEqual((await self.client.get("/../config.py")).status, 404)
+        missing = await self.client.get("/../config.py")
+        self.assertEqual(missing.status, 404)
+        self.assertIn("frame-ancestors 'none'", missing.headers["Content-Security-Policy"])   # errors too
 
     async def test_pairing_needs_the_code_shown_on_the_pc(self):
         response = await self.client.post("/pair", json={"code": "123456"})
@@ -236,7 +238,8 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
             msg = await ws.receive(timeout=5)
             if msg.type.name in ("CLOSE", "CLOSED", "CLOSING"):
                 break
-        self.assertEqual(ws.close_code, service.CLOSE_REVOKED)
+        # the code in the PC's close frame (ws.close_code may read 1006 after the client's own reply fails)
+        self.assertEqual(msg.data if msg.type.name == "CLOSE" else ws.close_code, service.CLOSE_REVOKED)
 
     async def test_pc_control_only_for_trusted_browsers(self):
         token = await self.full_access(secure_pairing=True)

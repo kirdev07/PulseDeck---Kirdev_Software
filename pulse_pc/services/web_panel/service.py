@@ -96,9 +96,14 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
     async def guard(request, handler):
         if not is_private_ip(request.remote):
             return web.Response(status=403, text="PulseDeck: только для домашней сети.")
-        response = await handler(request)
+        try:
+            response = await handler(request)
+        except web.HTTPException as exc:      # 403/404 … get the same headers
+            response = exc
         for name, value in SECURITY_HEADERS.items():
             response.headers.setdefault(name, value)
+        if isinstance(response, web.HTTPException) and not isinstance(response, web.HTTPSuccessful):
+            raise response
         return response
 
     async def static(request):
@@ -194,7 +199,7 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
         if not push.valid_subscription(subscription):
             return web.json_response({"ok": False, "error": "bad_subscription"}, status=400)
         await asyncio.to_thread(push.subscribe, config_dir, device["id"], subscription, body.get("limits"),
-                                body.get("alerts", True))
+                                body.get("alerts", True), body.get("disk"))
         logger.info("Уведомления включены: %s", device.get("name", "?"))
         return web.json_response({"ok": True})
 
@@ -204,7 +209,8 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
         if error:
             return error
         device, body = found
-        await asyncio.to_thread(push.update, config_dir, device["id"], body.get("limits"), body.get("alerts", True))
+        await asyncio.to_thread(push.update, config_dir, device["id"], body.get("limits"), body.get("alerts", True),
+                                body.get("disk"))
         return web.json_response({"ok": True})
 
     async def push_unsubscribe(request):
@@ -327,11 +333,16 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
             # «Отозвать» on the PC must cut an open page; «Доступ» changes apply live.
             while not ws.closed:
                 await asyncio.sleep(AUTH_RECHECK_SECONDS)
-                current = await asyncio.to_thread(browser, token)
+                try:
+                    current = await asyncio.to_thread(browser, token)
+                except Exception:  # noqa: BLE001 - unreadable config: treat as revoked, the page reconnects
+                    logger.exception("Веб-панель: проверка доступа")
+                    current = None
                 if not current:
                     logger.info("Доступ браузера к веб-панели отозван.")
+                    closing.set()
                     async with lock:        # not in the middle of a send (see display_api)
-                        await ws.close(code=CLOSE_REVOKED, message=b"revoked")
+                        await asyncio.wait_for(ws.close(code=CLOSE_REVOKED, message=b"revoked"), 10)
                     return
                 control = may_control(current, secure)
                 device.update(current)
@@ -358,10 +369,12 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
                 await player_access.control_player(action, None, view["source"])
 
         await send({"type": "hello", "app": "PulseDeck", "name": socket.gethostname(),
-                    "device": device.get("name", ""), "control": view["control"], "secure": secure,
-                    "metrics_interval": METRICS_SECONDS, "assets": assets_version()})
+                    "control": view["control"], "secure": secure, "assets": assets_version()})
         await send(access_message())
-        tasks = [asyncio.create_task(loop()) for loop in (metrics_loop, media_loop, sessions_loop, auth_loop, activity_loop)]
+        closing = asyncio.Event()
+        loops = (metrics_loop, media_loop, sessions_loop, auth_loop, activity_loop)
+        AUTH = loops.index(auth_loop)
+        tasks = [asyncio.create_task(loop()) for loop in loops]
         try:
             async for msg in ws:
                 if msg.type != WSMsgType.TEXT:
@@ -372,9 +385,7 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
                     continue
                 if not isinstance(data, dict):
                     continue
-                if data.get("type") == "ping":
-                    await send({"type": "pong"})
-                elif data.get("type") == "log" and view["logs"] < 40:
+                if data.get("type") == "log" and view["logs"] < 40:
                     # What the phone's browser did (the lock screen player): the phone has no
                     # console to read, so it reports to the PC log. Short, few per connection.
                     view["logs"] += 1
@@ -400,8 +411,11 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
                         except ValueError as exc:
                             await send({"type": "error", "code": "player", "message": str(exc)})
         finally:
+            # A revocation close in progress is let finish (cancelled half-way, the phone would
+            # see a broken link, 1006, instead of «revoked», 4001); everything else stops now.
             for task in tasks:
-                task.cancel()
+                if not (task is tasks[AUTH] and closing.is_set()):
+                    task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             reader.close()
             clients.discard(ws)
