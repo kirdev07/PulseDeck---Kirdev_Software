@@ -138,6 +138,17 @@ input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; bord
 input[type=range]:disabled::-webkit-slider-thumb { width: 0; height: 0; margin-top: 0; }
 input[type=range]:disabled::-moz-range-thumb { width: 0; height: 0; }
 
+/* ----- the seek bar as on Samsung: the played part waves while the track plays ----- */
+.seekbar { position: relative; height: 24px; }
+.seekbar canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; display: none; }
+.seekbar input { position: relative; }
+html.wave-seek .seekbar canvas { display: block; }
+html.wave-seek .seekbar input::-webkit-slider-runnable-track { background: transparent; }
+html.wave-seek .seekbar input::-moz-range-track { background: transparent; }
+html.wave-seek .seekbar input::-moz-range-progress { background: transparent; }
+html.wave-seek .seekbar input::-webkit-slider-thumb { opacity: 0; width: 20px; height: 24px; margin-top: -10.5px; }
+html.wave-seek .seekbar input::-moz-range-thumb { opacity: 0; width: 20px; height: 24px; }
+
 .hint { max-width: 560px; font-size: 12px; color: var(--text2); background: var(--surface2); border-radius: 12px;
         padding: 8px 12px; text-align: center; }
 

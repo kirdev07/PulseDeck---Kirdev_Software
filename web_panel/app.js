@@ -57,7 +57,7 @@ const DEFAULTS = {
   bgDark: 'default', bgLight: 'default', clockColor: 'ink', uiFont: 'system', clockFont: 'system',
   idle: 'wave', idleSize: 'normal', motion: true, pulse: false,
   layout: 'panel', tiles: ['cpu', 'gpu', 'ram', 'net', 'disk'], tileOrder: Object.keys(TILES), disk: '',
-  playerAlways: false, showCover: true, showProgress: true, showVolume: true, sparks: true, tileRows: 'wrap',
+  playerAlways: false, waveSeek: true, showCover: true, showProgress: true, showVolume: true, sparks: true, tileRows: 'wrap',
   alerts: true, notify: false, push: false, alertOffline: true,
   nowPlaying: true, coverColors: true, coverBackdrop: false, gestures: true, showActivity: true,
   limits: { cpu: 90, gpu: 90, ram: 90, vram: 95, disk: 10, battery: 20 },
@@ -128,6 +128,7 @@ function applyPrefs() {
   root.classList.toggle('hide-volume', !prefs.showVolume);
   root.classList.toggle('gestures', prefs.gestures);
   root.classList.toggle('eq-bars', prefs.nowPlaying);
+  root.classList.toggle('wave-seek', prefs.waveSeek);
   applyCoverColor();
   if (state.activity) showActivity(state.activity);
   $('date').hidden = !prefs.showDate;
@@ -703,6 +704,60 @@ function tickProgress() {
   $('seek').value = Math.floor(pos);
   $('pos').textContent = clockTime(pos);
   $('dur').textContent = clockTime(s.duration);
+  startSeekWave();
+}
+
+// ----- the seek bar as on Samsung: the played part is a moving wave, the rest a flat line.
+// On pause the wave calms down to a straight line. -----
+const seekWave = { amp: 0, phase: 0, raf: 0, last: 0 };
+function seekFraction() {
+  const s = state.media, seek = $('seek');
+  if (state.seeking || !s || !(s.duration > 0)) return Number(seek.max) > 0 ? Number(seek.value) / Number(seek.max) : 0;
+  let pos = s.position || 0;
+  if (s.status === 'playing') pos += (performance.now() - state.mediaAt) / 1000;
+  return Math.max(0, Math.min(1, pos / s.duration));
+}
+function startSeekWave() {
+  if (!seekWave.raf && prefs.waveSeek) seekWave.raf = requestAnimationFrame(drawSeekWave);
+}
+function drawSeekWave(now) {
+  seekWave.raf = 0;
+  const canvas = $('seekwave');
+  const width = canvas.clientWidth, height = canvas.clientHeight;
+  if (!prefs.waveSeek || document.hidden || !width) return;
+  const playing = !!state.media && state.media.status === 'playing';
+  const dt = seekWave.last ? Math.min(64, now - seekWave.last) : 16;
+  seekWave.last = now;
+  seekWave.amp += ((playing ? 1 : 0) - seekWave.amp) * Math.min(1, dt / 160);
+  if (prefs.motion) seekWave.phase += dt * 0.006;
+  const ratio = window.devicePixelRatio || 1;
+  if (canvas.width !== Math.round(width * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); }
+  const c = canvas.getContext('2d');
+  c.setTransform(ratio, 0, 0, ratio, 0, 0);
+  c.clearRect(0, 0, width, height);
+  const css = getComputedStyle(document.documentElement);
+  const accent = css.getPropertyValue('--accent').trim() || '#fff';
+  const mid = height / 2, amp = 3 * seekWave.amp;
+  const x = 6 + seekFraction() * (width - 12);          // where the native thumb is (12 px wide)
+  c.lineCap = 'round';
+  c.lineWidth = 2.5;
+  c.strokeStyle = accent;
+  c.beginPath();
+  for (let i = 2; i <= x; i += 1) {
+    const y = mid + amp * Math.sin(i * Math.PI * 2 / 18 - seekWave.phase);
+    if (i === 2) c.moveTo(i, y); else c.lineTo(i, y);
+  }
+  c.stroke();
+  if (x + 6 < width - 2) {
+    c.strokeStyle = css.getPropertyValue('--track').trim() || '#333';
+    c.beginPath(); c.moveTo(x + 6, mid); c.lineTo(width - 2, mid); c.stroke();
+  }
+  c.fillStyle = accent;                                  // the thumb: a short upright pill
+  c.beginPath();
+  if (c.roundRect) c.roundRect(x - 2, mid - 7, 4, 14, 2); else c.rect(x - 2, mid - 7, 4, 14);
+  c.fill();
+  if (playing || seekWave.amp > 0.01) startSeekWave();
+  else seekWave.last = 0;
 }
 
 function send(action, value) {
@@ -1554,6 +1609,7 @@ function buildSettings() {
     el('h3', { text: 'Плеер' }),
     toggle('playerAlways', 'Показывать, даже когда ничего не играет'),
     toggle('nowPlaying', 'Полоски «играет» рядом с названием трека'),
+    toggle('waveSeek', 'Ползунок трека волной, пока играет'),
     toggle('showCover', 'Обложка'),
     toggle('showProgress', 'Полоса времени'),
     toggle('showVolume', 'Громкость ПК'),
@@ -1649,7 +1705,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (cmd) send(cmd);
   });
   const seek = $('seek');
-  seek.addEventListener('input', () => { state.seeking = true; $('pos').textContent = clockTime(Number(seek.value)); });
+  seek.addEventListener('input', () => { state.seeking = true; $('pos').textContent = clockTime(Number(seek.value)); startSeekWave(); });
   seek.addEventListener('change', () => {
     state.seeking = false;
     send('seek', Number(seek.value));

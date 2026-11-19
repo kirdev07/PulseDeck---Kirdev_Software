@@ -113,7 +113,7 @@
           <div class="title-row"><span class="eq" aria-hidden="true"><i></i><i></i><i></i><i></i></span><div class="title" id="title"></div></div>
           <div class="meta"><span id="artist"></span><span id="sourcename" class="source"></span></div>
           <div class="progress" id="progress" hidden>
-            <input type="range" id="seek" min="0" max="100" step="1" value="0" aria-label="Позиция трека" disabled>
+            <div class="seekbar"><canvas id="seekwave" aria-hidden="true"></canvas><input type="range" id="seek" min="0" max="100" step="1" value="0" aria-label="Позиция трека" disabled></div>
             <div class="times"><span id="pos">0:00</span><span id="dur">0:00</span></div>
           </div>
         </div>
