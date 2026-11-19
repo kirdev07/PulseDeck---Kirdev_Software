@@ -406,6 +406,25 @@ function updateAwake() {
   button.title = button.disabled ? 'Доступно только в защищённом режиме (HTTPS)' : '';
 }
 
+// ----- battery of this phone (Battery Status API: Chrome on Android; Safari on iPhone has none) -----
+async function startBattery() {
+  if (!navigator.getBattery) return;            // not offered by this browser: the icon stays hidden
+  let battery;
+  try { battery = await navigator.getBattery(); } catch (e) { return; }
+  const show = () => {
+    const level = Math.round(battery.level * 100);
+    $('battery').hidden = false;
+    $('battery').classList.toggle('low', level <= 20 && !battery.charging);
+    $('battery-level').setAttribute('width', String(Math.max(0.6, 13.4 * battery.level)));
+    $('battery-bolt').toggleAttribute('hidden', !battery.charging);
+    $('battery-text').textContent = `${level}%`;
+    $('battery').title = battery.charging ? `Заряжается: ${level}%` : `Батарея телефона: ${level}%`;
+  };
+  show();
+  battery.addEventListener('levelchange', show);
+  battery.addEventListener('chargingchange', show);
+}
+
 // ----- start -----
 function startPanel(code) {
   state.token = store.get(TOKEN_STORE);
@@ -427,6 +446,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(tickClock, 1000);
   setInterval(tickProgress, 1000);
   startWave();
+  startBattery();
   showSecureInfo();
 
   $('controls').addEventListener('click', (event) => {
