@@ -707,8 +707,10 @@ function tickProgress() {
   startSeekWave();
 }
 
-// ----- the seek bar as on Samsung: the played part is a moving wave, the rest a flat line.
-// On pause the wave calms down to a straight line. -----
+// ----- the seek bar as on Samsung (One UI / Android media player): the played part is a calm
+// wave that drifts slowly toward the thumb and flattens right before it; the rest is a flat line.
+// On pause the wave calms down to a straight line in half a second. -----
+const WAVE_LENGTH = 24, WAVE_HEIGHT = 2.6, WAVE_SPEED = 9;       // px, px, px per second
 const seekWave = { amp: 0, phase: 0, raf: 0, last: 0 };
 function seekFraction() {
   const s = state.media, seek = $('seek');
@@ -728,8 +730,9 @@ function drawSeekWave(now) {
   const playing = !!state.media && state.media.status === 'playing';
   const dt = seekWave.last ? Math.min(64, now - seekWave.last) : 16;
   seekWave.last = now;
-  seekWave.amp += ((playing ? 1 : 0) - seekWave.amp) * Math.min(1, dt / 160);
-  if (prefs.motion) seekWave.phase += dt * 0.006;
+  const target = playing ? 1 : 0, stepAmp = dt / 500;              // 0 ↔ 1 in 0.5 s
+  seekWave.amp = target > seekWave.amp ? Math.min(target, seekWave.amp + stepAmp) : Math.max(target, seekWave.amp - stepAmp);
+  if (prefs.motion) seekWave.phase = (seekWave.phase + dt / 1000 * WAVE_SPEED * Math.PI * 2 / WAVE_LENGTH) % (Math.PI * 2);
   const ratio = window.devicePixelRatio || 1;
   if (canvas.width !== Math.round(width * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); }
   const c = canvas.getContext('2d');
@@ -737,15 +740,20 @@ function drawSeekWave(now) {
   c.clearRect(0, 0, width, height);
   const css = getComputedStyle(document.documentElement);
   const accent = css.getPropertyValue('--accent').trim() || '#fff';
-  const mid = height / 2, amp = 3 * seekWave.amp;
+  const mid = height / 2, eased = seekWave.amp * seekWave.amp * (3 - 2 * seekWave.amp);   // smoothstep
+  const amp = WAVE_HEIGHT * eased;
   const x = 6 + seekFraction() * (width - 12);          // where the native thumb is (12 px wide)
   c.lineCap = 'round';
-  c.lineWidth = 2.5;
+  c.lineJoin = 'round';
+  c.lineWidth = 3;
   c.strokeStyle = accent;
   c.beginPath();
-  for (let i = 2; i <= x; i += 1) {
-    const y = mid + amp * Math.sin(i * Math.PI * 2 / 18 - seekWave.phase);
-    if (i === 2) c.moveTo(i, y); else c.lineTo(i, y);
+  const end = x - 4;
+  c.moveTo(2, mid);
+  for (let i = 2; i <= end; i += 0.5) {
+    const near = Math.min(1, (end - i) / WAVE_LENGTH, (i - 2) / (WAVE_LENGTH / 2));   // flat at both ends
+    const y = mid + amp * near * Math.sin(i * Math.PI * 2 / WAVE_LENGTH - seekWave.phase);
+    c.lineTo(i, y);
   }
   c.stroke();
   if (x + 6 < width - 2) {
