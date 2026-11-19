@@ -36,7 +36,8 @@ from pulse_pc.services.web_panel import settings as web_settings
 logger = logging.getLogger("pulse_pc.services.web_panel")
 WEB_ROOT = Path(config.RESOURCE_DIR) / "web_panel"
 FILES = {"/": "index.html", "/index.html": "index.html", "/app.js": "app.js", "/app.css": "app.css",
-         "/logo.svg": "logo.svg", "/icon.png": "icon.png", "/manifest.webmanifest": "manifest.webmanifest"}
+         "/logo.svg": "logo.svg", "/icon.png": "icon.png", "/manifest.webmanifest": "manifest.webmanifest",
+         "/sw.js": "sw.js"}
 TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml",
          ".png": "image/png", ".webmanifest": "application/manifest+json"}
 METRICS_SECONDS = 2.0

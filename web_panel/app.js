@@ -54,9 +54,11 @@ const DEFAULTS = {
   theme: 'dark', themeByTime: false, dayFrom: '07:00', dayTo: '20:00',
   accent: 'white', clockWeight: 'thin', clockSize: 'm', clock24: true, seconds: false, showDate: true,
   bgDark: 'default', bgLight: 'default', clockColor: 'ink', uiFont: 'system', clockFont: 'system',
-  idle: 'wave', idleSize: 'normal', buddy: 'none', motion: true, pulse: false,
+  idle: 'wave', idleSize: 'normal', motion: true, pulse: false,
   layout: 'panel', tiles: ['cpu', 'gpu', 'ram', 'net', 'disk'], tileOrder: Object.keys(TILES), disk: '',
-  playerAlways: false, showCover: true, showProgress: true, showVolume: true, sparks: true,
+  playerAlways: false, showCover: true, showProgress: true, showVolume: true, sparks: true, tileRows: 'wrap',
+  alerts: true, notify: false, alertOffline: true,
+  limits: { cpu: 90, gpu: 90, ram: 90, vram: 95, disk: 10, battery: 20 },
   burnIn: true, offlineClock: true,
 };
 const CLOCK_COLORS = {          // «ink» = the theme's text colour (no override)
@@ -81,6 +83,7 @@ function loadPrefs() {
   if (!saved.theme && old) result.theme = old === 'light' ? 'light' : 'dark';
   if (saved.wave === false && !saved.idle) result.idle = 'none';      // the old «Волна» switch
   if (result.idle === 'stars') result.idle = 'starfield';             // renamed
+  result.limits = { ...DEFAULTS.limits, ...(saved.limits || {}) };
   result.tiles = (result.tiles || []).filter((t) => TILES[t]);
   result.tileOrder = [...new Set([...(result.tileOrder || []).filter((t) => TILES[t]), ...Object.keys(TILES)])];
   return result;
@@ -129,7 +132,6 @@ function applyPrefs() {
   renderMetrics();
   showMedia({ session: state.media, system_volume: state.volume, keepTime: true });
   showSaver();
-  updateBuddy();
 }
 
 function forgetToken(reason) {
@@ -376,7 +378,10 @@ function renderMetrics() {
     }));
   }
   if (!state.metrics) return;
+  const glowing = alertedTiles();
+  box.classList.toggle('scroll', prefs.tileRows === 'scroll');
   for (const cell of box.children) {
+    cell.classList.toggle('alert', glowing.has(cell.dataset.tile));
     const data = tileData(cell.dataset.tile, state.metrics);
     if (data.name) cell.querySelector('.head span').textContent = data.name;
     cell.querySelector('.head .num').textContent = data.value;
@@ -396,6 +401,74 @@ function renderMetrics() {
     }
   }
   if (!$('detail').hidden) renderDetail();
+}
+
+// ----- warnings (Настройки → Предупреждения): a tile glows and a notice comes when a value stays
+// over its limit for ~10 s; it is armed again once the value falls 5 points below. -----
+const ALERT_SAMPLES = 5;          // metrics come every 2 s
+const LIMITS = {
+  cpu: { title: 'Процессор', unit: '%', over: true }, gpu: { title: 'Видеокарта', unit: '%', over: true },
+  ram: { title: 'Память', unit: '%', over: true }, vram: { title: 'Видеопамять', unit: '%', over: true },
+  disk: { title: 'Свободно на диске', unit: '%', over: false }, battery: { title: 'Батарея ПК', unit: '%', over: false },
+};
+const alertState = {};
+function alertValues(m) {
+  const disk = (m.disks || []).find((d) => d.name === prefs.disk) || (m.disks || [])[0];
+  return {
+    cpu: m.cpu.load, gpu: m.gpu.load, ram: m.ram.percent,
+    vram: m.gpu.memory_total && m.gpu.memory_used != null ? 100 * m.gpu.memory_used / m.gpu.memory_total : null,
+    disk: disk && disk.total ? 100 * disk.free / disk.total : null,
+    battery: m.battery && !m.battery.plugged ? m.battery.percent : null,
+  };
+}
+function checkAlerts(m) {
+  const values = alertValues(m);
+  for (const [key, info] of Object.entries(LIMITS)) {
+    const limit = prefs.limits[key], value = values[key];
+    const st = alertState[key] || (alertState[key] = { count: 0, active: false });
+    const bad = prefs.alerts && value != null && (info.over ? value >= limit : value <= limit);
+    const fine = value == null || (info.over ? value < limit - 5 : value > limit + 5);
+    st.count = bad ? st.count + 1 : 0;
+    if (!st.active && st.count >= ALERT_SAMPLES) {
+      st.active = true;
+      const text = info.over ? `${info.title}: ${Math.round(value)}% (порог ${limit}%)`
+        : key === 'disk' ? `Мало места: свободно ${Math.round(value)}% на ${(m.disks || [])[0]?.name || 'диске'}`
+          : `Батарея ПК: ${Math.round(value)}%, подключите зарядку`;
+      notify(`PulseDeck · ${$('pcname').textContent}`, text, key);
+    } else if (st.active && (fine || !prefs.alerts)) {
+      st.active = false;
+    }
+  }
+}
+// Which tiles glow: the tile of every active warning.
+const ALERT_TILES = { cpu: ['cpu', 'cores'], gpu: ['gpu'], ram: ['ram'], vram: ['vram'], disk: ['disk'] };
+function alertedTiles() {
+  const set = new Set();
+  for (const [key, st] of Object.entries(alertState)) if (st.active) (ALERT_TILES[key] || []).forEach((t) => set.add(t));
+  return set;
+}
+
+// A notice: always on the page; also a system notification when allowed (Настройки → Уведомления).
+async function notify(title, body, tag) {
+  toast(body);
+  if (!prefs.notify || !('Notification' in window) || Notification.permission !== 'granted') return;
+  try {
+    const registration = await navigator.serviceWorker?.getRegistration();
+    if (registration) await registration.showNotification(title, { body, tag: `pulsedeck-${tag}`, icon: 'icon.png', badge: 'icon.png' });
+    else new Notification(title, { body, tag: `pulsedeck-${tag}`, icon: 'icon.png' });
+  } catch (e) { /* the browser refused: the toast is enough */ }
+}
+async function enableNotifications() {
+  if (!('Notification' in window)) {
+    toast(isApple() ? 'На iPhone уведомления работают, если открыть панель со значка «На экран Домой» (iOS 16.4+).'
+      : 'Этот браузер не поддерживает уведомления.');
+    return false;
+  }
+  try { await navigator.serviceWorker?.register('sw.js'); } catch (e) { /* plain HTTP: notifications without a worker */ }
+  const result = await Notification.requestPermission();
+  if (result !== 'granted') { toast('Уведомления не разрешены. Разрешите их в настройках браузера для этого сайта.'); return false; }
+  notify('PulseDeck', 'Уведомления включены: пришлю, если ПК перегреется по нагрузке, кончится место или пропадёт связь.', 'test');
+  return true;
 }
 
 // ----- tap a tile: details with a bigger graph -----
@@ -468,9 +541,9 @@ let knownDisks = '';
 function showMetrics(m) {
   state.metrics = m;
   remember(m);
+  checkAlerts(m);
   showPcStatus(m);
   renderMetrics();
-  updateBuddy();
   const disks = (m.disks || []).map((d) => d.name).join();
   if (disks !== knownDisks) {          // «Какой диск» in Настройки lists the PC's disks
     knownDisks = disks;
@@ -513,7 +586,6 @@ function showMedia(msg) {
   showControls();
   tickProgress();
   if (prefs.tiles.includes('volume')) renderMetrics();
-  updateBuddy();
 }
 
 function showSessions(items) {
@@ -1020,64 +1092,6 @@ function startIdle() {
   requestAnimationFrame(frame);
 }
 
-// ----- emoji companion: the phone's own emoji, gentle CSS motion -----
-// «Котик» reacts to the real PC: asleep when idle, nods while music plays, panics above 85 % CPU,
-// sad without a connection.
-function catMood() {
-  if (!state.online) return 'sad';
-  if ((state.metrics?.cpu?.load ?? 0) >= 85) return 'hot';
-  if (state.media && state.media.status === 'playing') return 'vibe';
-  return 'sleep';
-}
-const CAT = { sleep: ['😽', '💤'], vibe: ['😸', '🎵'], hot: ['🙀', '🔥'], sad: ['😿', ''] };
-let buddyKind = '';
-function updateBuddy() {
-  const box = $('buddy');
-  const kind = $('panel').hidden ? 'none' : prefs.buddy;
-  box.hidden = kind === 'none';
-  if (kind === 'none') { box.replaceChildren(); buddyKind = ''; return; }
-  if (kind === 'cat') {
-    const mood = catMood();
-    if (buddyKind !== `cat:${mood}`) {
-      buddyKind = `cat:${mood}`;
-      box.className = `buddy cat ${mood}`;
-      const [face, extra] = CAT[mood];
-      box.replaceChildren(el('span', { class: 'b face', text: face }),
-        extra ? el('span', { class: 'b extra', text: extra }) : null,
-        extra ? el('span', { class: 'b extra second', text: extra }) : null);
-    }
-    return;
-  }
-  if (buddyKind === kind) return;
-  buddyKind = kind;
-  box.className = `buddy ${{ walk: 'walk', snow: 'rain', hearts: 'hearts', sparkle: 'sparkle' }[kind]}`;
-  const items = [];
-  if (kind === 'walk') items.push(el('span', { class: 'b', text: '🐈' }));
-  if (kind === 'snow') for (let i = 0; i < 9; i++) {
-    const flake = el('span', { class: 'b', text: i % 3 ? '❄️' : '·' });
-    flake.style.left = `${(i * 11 + 4) % 100}%`;
-    flake.style.animationDuration = `${14 + (i * 7) % 11}s`;
-    flake.style.animationDelay = `${-(i * 2.3)}s`;
-    flake.style.fontSize = `${12 + (i * 5) % 12}px`;
-    items.push(flake);
-  }
-  if (kind === 'hearts') for (let i = 0; i < 5; i++) {
-    const heart = el('span', { class: 'b', text: ['💖', '💗', '💕', '💞', '💓'][i] });
-    heart.style.left = `${55 + i * 8}%`;
-    heart.style.animationDelay = `${i * 1.9}s`;
-    heart.style.animationDuration = `${8 + i}s`;
-    items.push(heart);
-  }
-  if (kind === 'sparkle') for (let i = 0; i < 8; i++) {
-    const star = el('span', { class: 'b', text: '✨' });
-    star.style.left = `${30 + ((i * 37) % 40)}%`;
-    star.style.top = `${4 + ((i * 23) % 30)}%`;
-    star.style.animationDelay = `${i * 0.45}s`;
-    items.push(star);
-  }
-  box.replaceChildren(...items);
-}
-
 // ----- AMOLED burn-in protection: shift the whole screen a few px every two minutes -----
 function startBurnIn() {
   setInterval(() => {
@@ -1088,11 +1102,18 @@ function startBurnIn() {
 }
 
 // ----- connection -----
+let offlineTimer = 0;
 function setStatus(online) {
+  if (online !== state.online) {
+    clearTimeout(offlineTimer);
+    // «Нет связи» only after 30 s: a short Wi-Fi hiccup is not worth a notification.
+    if (!online && state.online && prefs.alertOffline) {
+      offlineTimer = setTimeout(() => notify('PulseDeck', `Нет связи с ПК ${$('pcname').textContent}. Он выключен или вне сети?`, 'offline'), 30000);
+    }
+  }
   state.online = online;
   $('dot').classList.toggle('on', online);
   showSaver();
-  updateBuddy();
 }
 
 // Without a connection: the clock screensaver (Настройки → Экран) or the «Нет связи» overlay.
@@ -1312,8 +1333,19 @@ function buildSettings() {
         ...state.metrics.disks.map((d) => { const o = new Option(d.label ? `${d.name} ${d.label}` : d.name, d.name); o.selected = d.name === (prefs.disk || state.metrics.disks[0].name); return o; })))
       : null,
 
+    pref('Если плитки не помещаются', chips('tileRows', [['wrap', 'Второй ряд'], ['scroll', 'Листать пальцем']])),
     toggle('sparks', 'Мини-графики в плитках'),
     el('div', { class: 'note-text', text: 'Нажмите на плитку — откроются подробности: большой график, ядра, все диски.' }),
+
+    el('h3', { text: 'Предупреждения' }),
+    toggle('alerts', 'Подсвечивать плитку и сообщать'),
+    prefs.alerts ? el('div', { class: 'limits' }, ...Object.entries(LIMITS).map(([key, info]) => limitRow(key, info))) : null,
+    prefs.alerts ? el('div', { class: 'note-text',
+      text: 'Сообщение приходит, если значение держится за порогом ~10 секунд. Диск и батарея — когда осталось меньше порога.' }) : null,
+    toggle('alertOffline', 'Сообщать, если пропала связь с ПК'),
+
+    el('h3', { text: 'Уведомления' }),
+    notifyRow(),
 
     el('h3', { text: 'Плеер' }),
     toggle('playerAlways', 'Показывать, даже когда ничего не играет'),
@@ -1324,10 +1356,6 @@ function buildSettings() {
     el('h3', { text: 'Анимации' }),
     pref('Когда ничего не играет', chips('idle', [...Object.entries(IDLE).map(([k, v]) => [k, v.name]), ['none', 'Нет']])),
     prefs.idle !== 'none' ? pref('Размер анимации', chips('idleSize', Object.entries(IDLE_SIZES))) : null,
-    pref('Компаньон', chips('buddy', [['none', 'Нет'], ['cat', '🐱 Котик с настроением'], ['walk', '🐈 Котик гуляет'],
-      ['hearts', '💖 Сердечки'], ['snow', '❄️ Снегопад'], ['sparkle', '✨ Звёздочки']])),
-    prefs.buddy === 'cat' ? el('div', { class: 'note-text',
-      text: 'Спит 😽, когда ничего не происходит; качает головой 😸 под музыку; паникует 🙀, если процессор загружен больше 85 %; грустит 😿 без связи с ПК.' }) : null,
     toggle('motion', 'Плавные переходы и анимации'),
     toggle('pulse', 'Обложка пульсирует, пока играет'),
 
@@ -1336,6 +1364,30 @@ function buildSettings() {
     toggle('offlineClock', 'Без связи — только часы'),
   ];
   box.replaceChildren(...sections.filter(Boolean));
+}
+
+function limitRow(key, info) {
+  const input = el('input', { type: 'range', min: info.over ? '50' : '5', max: info.over ? '100' : '50', step: '1',
+                              value: String(prefs.limits[key]), 'aria-label': info.title });
+  const value = el('b', { class: 'num', text: `${info.over ? '≥' : '≤'} ${prefs.limits[key]}${info.unit}` });
+  input.addEventListener('input', () => { value.textContent = `${info.over ? '≥' : '≤'} ${input.value}${info.unit}`; });
+  input.addEventListener('change', () => set('limits', { ...prefs.limits, [key]: Number(input.value) }));
+  return el('label', { class: 'limit' }, el('span', { text: info.title }), input, value);
+}
+function notifyRow() {
+  const supported = 'Notification' in window;
+  const granted = supported && Notification.permission === 'granted';
+  const button = el('button', { type: 'button', class: 'switch', role: 'switch', 'aria-checked': String(prefs.notify && granted),
+                                'aria-label': 'Системные уведомления', onclick: async () => {
+    if (prefs.notify && granted) { set('notify', false); return; }
+    if (await enableNotifications()) set('notify', true); else buildSettings();
+  } }, el('i'));
+  const note = !supported
+    ? (isApple() ? 'На iPhone: откройте панель со значка «На экран Домой» (iOS 16.4+) — тогда уведомления можно включить.'
+      : 'Этот браузер не поддерживает уведомления.')
+    : 'Приходят, пока панель открыта или свёрнута недавно. Когда она закрыта совсем, iPhone и Android их не получат — для этого есть Telegram-бот PulseDeck.';
+  return el('div', { class: 'pref' }, el('div', { class: 'pref row' }, el('span', { text: 'Системные уведомления' }), button),
+    el('div', { class: 'note-text', text: note }));
 }
 
 function tilesEditor() {
