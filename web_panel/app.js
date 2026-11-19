@@ -112,7 +112,7 @@ function applyPrefs() {
   root.dataset.clockFont = prefs.clockFont;
   const clock = CLOCK_COLORS[prefs.clockColor];
   if (clock) root.style.setProperty('--clock-color', clock); else root.style.removeProperty('--clock-color');
-  if (prefs.idle !== 'none' && !IDLE[prefs.idle]) prefs.idle = 'wave';     // an unknown saved choice
+  if (prefs.idle !== 'none' && !IDLE[prefs.idle]) prefs.idle = 'wave';     // an unknown or removed saved choice
   $('wave').dataset.kind = prefs.idle;
   root.dataset.idleSize = prefs.idleSize;
   root.classList.toggle('no-motion', !prefs.motion);
@@ -446,11 +446,11 @@ const IDLE = {
   eq: { name: 'Эквалайзер', h: 90 }, breathe: { name: 'Дыхание', h: 120 }, orbit: { name: 'Орбиты', h: 120 },
   fireflies: { name: 'Светлячки', h: 110 }, ripples: { name: 'Рябь', h: 120 }, aurora: { name: 'Сияние', h: 110 },
   starfield: { name: 'Звёздное небо', h: 120 }, matrix: { name: 'Матрица', h: 110 },
-  spectrum: { name: 'Круговой спектр', h: 150 }, helix: { name: 'ДНК', h: 90 }, lava: { name: 'Лава-лампа', h: 130 },
-  rain: { name: 'Дождь', h: 120 }, fire: { name: 'Огонь', h: 130 }, bubbles: { name: 'Пузырьки', h: 130 },
+  spectrum: { name: 'Круговой спектр', h: 150 }, helix: { name: 'ДНК', h: 90 }, pendulum: { name: 'Маятники', h: 120 },
+  rain: { name: 'Дождь', h: 120 }, snow: { name: 'Снег', h: 130 }, bubbles: { name: 'Пузырьки', h: 130 },
   voice: { name: 'Голосовая волна', h: 70 }, galaxy: { name: 'Галактика', h: 140 }, grid: { name: 'Сетка точек', h: 120 },
-  radar: { name: 'Радар', h: 150 }, dots: { name: 'Три точки', h: 60 }, infinity: { name: 'Бесконечность', h: 100 },
-  heart: { name: 'Сердце', h: 120 }, seconds: { name: 'Секундное кольцо', h: 150 }, tunnel: { name: 'Тоннель', h: 140 },
+  ring: { name: 'Неоновое кольцо', h: 140 }, dots: { name: 'Три точки', h: 60 }, infinity: { name: 'Бесконечность', h: 100 },
+  heart: { name: 'Сердце', h: 120 }, seconds: { name: 'Секундное кольцо', h: 150 }, runner: { name: 'Бегущие точки', h: 80 },
   ocean: { name: 'Океан', h: 110 }, lissajous: { name: 'Лиссажу', h: 120 }, polygon: { name: 'Кристалл', h: 150 },
   confetti: { name: 'Конфетти', h: 130 },
 };
@@ -519,11 +519,12 @@ function drawIdle(kind, c, w, h, t, ink) {
     c.shadowBlur = 0;
     c.fillStyle = ink;
     if (head >= 0 && head <= w) { c.beginPath(); c.arc(head, mid, 3, 0, Math.PI * 2); c.fill(); }
-  } else if (kind === 'eq') {             // rounded bars with a soft reflection
-    const bars = 15, gap = 6, bw = (w - gap * (bars - 1)) / bars, base = h * 0.72;
+  } else if (kind === 'eq') {             // rounded bars with a soft reflection; count and width follow the size
+    const bars = Math.max(8, Math.min(32, Math.round(w / 22))), slot = w / bars;
+    const bw = Math.min(12, slot * 0.55), base = h * 0.72;
     for (let i = 0; i < bars; i++) {
       const v = 0.18 + 0.82 * Math.abs(Math.sin(t / (480 + i * 47) + i * 1.3) * Math.sin(t / 1900 + i * 0.4));
-      const bh = v * base, x = i * (bw + gap);
+      const bh = v * base, x = i * slot + (slot - bw) / 2;
       c.globalAlpha = 1;
       c.beginPath(); c.roundRect ? c.roundRect(x, base - bh, bw, bh, bw / 2) : c.rect(x, base - bh, bw, bh); c.fill();
       c.globalAlpha = 0.18;
@@ -532,7 +533,7 @@ function drawIdle(kind, c, w, h, t, ink) {
     c.globalAlpha = 1;
   } else if (kind === 'breathe') {        // concentric rings, 4 s in / 4 s out
     const k = 0.5 + 0.5 * Math.sin(t / 1273);
-    const r = (h / 2 - 6) * (0.55 + 0.45 * k);
+    const r = (Math.min(h / 2, w / 2) - 4) * (0.55 + 0.45 * k);
     for (let ring = 3; ring >= 0; ring--) {
       c.beginPath(); c.arc(w / 2, mid, r * (1 - ring * 0.18), 0, Math.PI * 2);
       c.globalAlpha = (0.12 + 0.5 * k) * (1 - ring * 0.22);
@@ -541,16 +542,17 @@ function drawIdle(kind, c, w, h, t, ink) {
     }
     c.globalAlpha = 0.18 * k; c.beginPath(); c.arc(w / 2, mid, r * 0.42, 0, Math.PI * 2); c.fill();
     c.globalAlpha = 1;
-  } else if (kind === 'orbit') {          // three planets on tilted ellipses around a glowing sun
+  } else if (kind === 'orbit') {          // three planets on tilted ellipses around a glowing sun (shape kept)
+    const U = Math.min(w / 2, h * 1.45) * 0.92;
     c.shadowColor = ink; c.shadowBlur = 14;
-    c.beginPath(); c.arc(w / 2, mid, 6, 0, Math.PI * 2); c.fill();
+    c.beginPath(); c.arc(w / 2, mid, Math.max(4, U * 0.05), 0, Math.PI * 2); c.fill();
     c.shadowBlur = 0;
-    [[0.42, 0.26, 3200, 3], [0.3, 0.38, 5200, 2.4], [0.18, 0.2, 2100, 1.8]].forEach(([rx, ry, period, size], i) => {
-      const a = (t / period) * Math.PI * 2 + i * 2;
+    [[0.95, 3200, 3], [0.68, 5200, 2.4], [0.4, 2100, 1.8]].forEach(([f, period, size], i) => {
+      const rx = U * f, ry = Math.min(rx * 0.34, h / 2 - 4), a = (t / period) * Math.PI * 2 + i * 2;
       c.globalAlpha = 0.22; c.lineWidth = 1;
-      c.beginPath(); c.ellipse(w / 2, mid, w * rx * 0.62, h * ry, 0, 0, Math.PI * 2); c.stroke();
+      c.beginPath(); c.ellipse(w / 2, mid, rx, ry, 0, 0, Math.PI * 2); c.stroke();
       c.globalAlpha = 1;
-      c.beginPath(); c.arc(w / 2 + Math.cos(a) * w * rx * 0.62, mid + Math.sin(a) * h * ry, size, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.arc(w / 2 + Math.cos(a) * rx, mid + Math.sin(a) * ry, size, 0, Math.PI * 2); c.fill();
     });
   } else if (kind === 'fireflies') {      // soft dots drifting and glowing on and off
     c.shadowColor = ink; c.shadowBlur = 10;
@@ -561,12 +563,13 @@ function drawIdle(kind, c, w, h, t, ink) {
       c.beginPath(); c.arc(x, y, 1.6 + f.s, 0, Math.PI * 2); c.fill();
     }
     c.shadowBlur = 0; c.globalAlpha = 1;
-  } else if (kind === 'ripples') {        // rings spreading from the centre, like a drop in water
+  } else if (kind === 'ripples') {        // rings spreading from the centre, like a drop in water (shape kept)
+    const U = Math.min(w * 0.48, (h / 2 - 2) / 0.36);
     for (let i = 0; i < 4; i++) {
       const u = ((t / 3200) + i / 4) % 1;
       c.globalAlpha = (1 - u) * 0.8;
       c.lineWidth = 1.5;
-      c.beginPath(); c.ellipse(w / 2, mid, u * w * 0.48, u * h * 0.46, 0, 0, Math.PI * 2); c.stroke();
+      c.beginPath(); c.ellipse(w / 2, mid, u * U, u * U * 0.36, 0, 0, Math.PI * 2); c.stroke();
     }
     c.globalAlpha = 1;
   } else if (kind === 'aurora') {         // northern lights: soft ribbons of the accent colour
@@ -614,18 +617,17 @@ function drawIdle(kind, c, w, h, t, ink) {
 const BUBBLES = Array.from({ length: 24 }, (_, i) => ({ x: rand(i + 900), r: 2 + rand(i + 950) * 7, v: 0.3 + rand(i + 990), o: rand(i + 1030) }));
 const CONFETTI = Array.from({ length: 46 }, (_, i) => ({ x: rand(i + 1100), v: 0.4 + rand(i + 1150), o: rand(i + 1200),
                                                          s: 3 + rand(i + 1250) * 4, spin: rand(i + 1300) * 6 }));
-const FLAMES = Array.from({ length: 40 }, (_, i) => ({ x: rand(i + 1400), v: 0.6 + rand(i + 1450), o: rand(i + 1500), r: 4 + rand(i + 1550) * 9 }));
 
 // The second set of idle animations (12–30).
 function drawMore(kind, c, w, h, t, ink) {
   const mid = h / 2, cx = w / 2, R = Math.min(w, h) / 2;
   if (kind === 'spectrum') {             // radial bars around a circle
-    const n = 64, r0 = R * 0.42;
-    c.lineWidth = Math.max(1.5, (Math.PI * 2 * r0) / n * 0.5);
+    const r0 = R * 0.45, n = Math.max(36, Math.min(90, Math.round(r0 * 1.6)));
+    c.lineWidth = Math.min(2.4, Math.max(1.2, (Math.PI * 2 * r0) / n * 0.45));
     for (let i = 0; i < n; i++) {
       const a = (i / n) * Math.PI * 2 + t / 6000;
       const v = 0.15 + 0.85 * Math.abs(Math.sin(t / 420 + i * 0.55) * Math.sin(t / 1700 + i * 0.13));
-      const r1 = r0 + v * R * 0.5;
+      const r1 = r0 + 2 + v * R * 0.45;
       c.globalAlpha = 0.45 + 0.55 * v;
       c.beginPath(); c.moveTo(cx + Math.cos(a) * r0, mid + Math.sin(a) * r0); c.lineTo(cx + Math.cos(a) * r1, mid + Math.sin(a) * r1); c.stroke();
     }
@@ -640,15 +642,6 @@ function drawMore(kind, c, w, h, t, ink) {
       c.globalAlpha = front ? 0.45 : 1; c.beginPath(); c.arc(x, y2, front ? 2 : 3, 0, Math.PI * 2); c.fill();
     }
     c.globalAlpha = 1;
-  } else if (kind === 'lava') {          // lava lamp: soft blobs that drift and melt together
-    c.filter = 'blur(10px)';
-    for (let i = 0; i < 6; i++) {
-      const x = cx + Math.sin(t / (3100 + i * 530) + i * 2) * w * 0.36;
-      const y = mid + Math.cos(t / (2700 + i * 410) + i) * h * 0.32;
-      c.globalAlpha = 0.55;
-      c.beginPath(); c.arc(x, y, R * (0.28 + 0.1 * Math.sin(t / 1500 + i)), 0, Math.PI * 2); c.fill();
-    }
-    c.filter = 'none'; c.globalAlpha = 1;
   } else if (kind === 'rain') {          // thin slanted rain
     c.lineWidth = 1.2;
     for (const [i, d] of DROPS.entries()) {
@@ -656,15 +649,6 @@ function drawMore(kind, c, w, h, t, ink) {
       const x = (d.x * w + y * 0.18 + i * 7) % w;
       c.globalAlpha = 0.35 + 0.5 * d.v;
       c.beginPath(); c.moveTo(x, y); c.lineTo(x - 3, y - 12); c.stroke();
-    }
-    c.globalAlpha = 1;
-  } else if (kind === 'fire') {          // flame particles rising and fading
-    for (const f of FLAMES) {
-      const u = ((t / 1000 * f.v * 0.6) + f.o) % 1;
-      const x = cx + (f.x - 0.5) * w * 0.5 * (1 - u * 0.7) + Math.sin(t / 300 + f.o * 9) * 4;
-      const y = h - u * h * 0.95;
-      c.globalAlpha = (1 - u) * 0.75;
-      c.beginPath(); c.arc(x, y, f.r * (1 - u * 0.8), 0, Math.PI * 2); c.fill();
     }
     c.globalAlpha = 1;
   } else if (kind === 'bubbles') {       // bubbles rising with a wobble
@@ -707,28 +691,16 @@ function drawMore(kind, c, w, h, t, ink) {
       }
     }
     c.globalAlpha = 1;
-  } else if (kind === 'radar') {         // rings and a sweeping beam
-    c.lineWidth = 1;
-    for (let i = 1; i <= 3; i++) { c.globalAlpha = 0.25; c.beginPath(); c.arc(cx, mid, R * 0.9 * i / 3, 0, Math.PI * 2); c.stroke(); }
-    const a = t / 900;
-    const beam = c.createConicGradient ? c.createConicGradient(a - 1.2, cx, mid) : null;
-    if (beam) {
-      beam.addColorStop(0, rgba(ink, 0)); beam.addColorStop(0.19, rgba(ink, 0.45)); beam.addColorStop(0.191, rgba(ink, 0));
-      c.globalAlpha = 1; c.fillStyle = beam;
-      c.beginPath(); c.arc(cx, mid, R * 0.9, 0, Math.PI * 2); c.fill();
-      c.fillStyle = ink;
-    }
-    c.globalAlpha = 1; c.lineWidth = 1.5;
-    c.beginPath(); c.moveTo(cx, mid); c.lineTo(cx + Math.cos(a) * R * 0.9, mid + Math.sin(a) * R * 0.9); c.stroke();
   } else if (kind === 'dots') {          // three dots bouncing, the «typing» loader
     for (let i = 0; i < 3; i++) {
       const v = Math.max(0, Math.sin(t / 260 - i * 0.7));
       c.globalAlpha = 0.4 + 0.6 * v;
-      c.beginPath(); c.arc(cx + (i - 1) * 26, mid - v * h * 0.22, 7, 0, Math.PI * 2); c.fill();
+      const r = Math.max(4, Math.min(10, h * 0.11));
+      c.beginPath(); c.arc(cx + (i - 1) * r * 3.6, mid - v * h * 0.22, r, 0, Math.PI * 2); c.fill();
     }
     c.globalAlpha = 1;
   } else if (kind === 'infinity') {      // a glowing tracer running along ∞
-    const ax = Math.min(w * 0.4, h * 1.4), ay = h * 0.36;
+    const ax = Math.min(w * 0.42, h * 1.15), ay = Math.min(ax * 0.42, h * 0.4);
     c.lineWidth = 1; c.globalAlpha = 0.2; c.beginPath();
     for (let i = 0; i <= 120; i++) { const s = (i / 120) * Math.PI * 2; const x = cx + ax * Math.sin(s), y = mid + ay * Math.sin(s) * Math.cos(s) * 2;
       if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); }
@@ -742,7 +714,7 @@ function drawMore(kind, c, w, h, t, ink) {
     c.shadowBlur = 0; c.globalAlpha = 1;
   } else if (kind === 'heart') {         // a heart beating twice a second… then resting
     const beat = t % 1200, k = beat < 160 ? 1 + 0.12 * Math.sin(beat / 160 * Math.PI) : beat < 360 ? 1 + 0.07 * Math.sin((beat - 160) / 200 * Math.PI) : 1;
-    const s = (h * 0.032) * k;
+    const s = Math.min(w * 0.7 / 32, h * 0.78 / 30) * k;
     c.save(); c.translate(cx, mid + h * 0.04); c.scale(s, s);
     c.beginPath();
     for (let i = 0; i <= 100; i++) { const a = (i / 100) * Math.PI * 2;
@@ -764,16 +736,6 @@ function drawMore(kind, c, w, h, t, ink) {
     c.font = `${Math.round(r * 0.5)}px ui-monospace, Menlo, monospace`; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillText(String(Math.floor(sec)).padStart(2, '0'), cx, mid + 1);
     c.textBaseline = 'alphabetic';
-  } else if (kind === 'tunnel') {        // squares flying towards the viewer
-    c.lineWidth = 1.2;
-    for (let i = 0; i < 9; i++) {
-      const z = ((i / 9) + t / 4000) % 1, s = z * z;
-      c.globalAlpha = Math.min(1, z * 1.6) * (1 - z * 0.3);
-      const sw = s * w * 0.95, sh = s * h * 0.95;
-      c.save(); c.translate(cx, mid); c.rotate(z * 0.8);
-      c.strokeRect(-sw / 2, -sh / 2, sw, sh); c.restore();
-    }
-    c.globalAlpha = 1;
   } else if (kind === 'ocean') {         // filled waves, one behind another
     for (let layer = 0; layer < 3; layer++) {
       c.globalAlpha = 0.22 + layer * 0.22;
@@ -788,7 +750,8 @@ function drawMore(kind, c, w, h, t, ink) {
     const a = 3, b = 2, delta = t / 2500;
     c.lineWidth = 1.4; c.beginPath();
     for (let i = 0; i <= 400; i++) { const s = (i / 400) * Math.PI * 2;
-      const x = cx + Math.sin(a * s + delta) * Math.min(w * 0.42, h * 1.2), y = mid + Math.sin(b * s) * h * 0.42;
+      const rx = Math.min(w * 0.42, h * 0.42 * 1.35), ry = rx / 1.35;
+      const x = cx + Math.sin(a * s + delta) * rx, y = mid + Math.sin(b * s) * ry;
       if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); }
     c.globalAlpha = 0.85; c.stroke(); c.globalAlpha = 1;
   } else if (kind === 'polygon') {       // a crystal: nested polygons turning against each other
@@ -800,6 +763,41 @@ function drawMore(kind, c, w, h, t, ink) {
       for (let i = 0; i <= sides; i++) { const ang = rot + (i / sides) * Math.PI * 2;
         const x = cx + Math.cos(ang) * r, y = mid + Math.sin(ang) * r; if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); }
       c.stroke();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'pendulum') {     // a pendulum wave: each ball a little slower than the next
+    const n = Math.max(9, Math.min(22, Math.round(w / 26))), slot = w / n, r = Math.max(3, Math.min(7, slot * 0.22));
+    for (let i = 0; i < n; i++) {
+      const y = mid + Math.sin(t / 1000 * (2 + i * 0.12)) * (h / 2 - r - 3);
+      c.globalAlpha = 0.25; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(i * slot + slot / 2, mid); c.lineTo(i * slot + slot / 2, y); c.stroke();
+      c.globalAlpha = 1;
+      c.beginPath(); c.arc(i * slot + slot / 2, y, r, 0, Math.PI * 2); c.fill();
+    }
+  } else if (kind === 'snow') {         // soft flakes drifting down
+    for (const f of FLIES) {
+      const y = ((t / 1000 * (8 + f.s * 14)) + f.y * h * 3) % (h + 10) - 5;
+      const x = (f.x * w + Math.sin(t / 2200 * f.s + f.p) * 14) % w;
+      c.globalAlpha = 0.4 + 0.5 * f.s / 1.4;
+      c.beginPath(); c.arc(x, y, 1 + f.s * 1.6, 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'ring') {         // a neon arc spinning with a fading tail
+    const r = R * 0.78, a = t / 520;
+    c.lineWidth = Math.max(2, R * 0.06);
+    c.globalAlpha = 0.12; c.beginPath(); c.arc(cx, mid, r, 0, Math.PI * 2); c.stroke();
+    c.shadowColor = ink; c.shadowBlur = 12;
+    for (let k = 0; k < 24; k++) {
+      c.globalAlpha = (1 - k / 24) * 0.9;
+      c.beginPath(); c.arc(cx, mid, r, a - k * 0.09 - 0.09, a - k * 0.09); c.stroke();
+    }
+    c.shadowBlur = 0; c.globalAlpha = 1;
+  } else if (kind === 'runner') {       // a row of dots making a travelling sine wave
+    const n = Math.max(16, Math.min(48, Math.round(w / 12))), slot = w / n;
+    for (let i = 0; i < n; i++) {
+      const v = Math.sin(i * 0.42 - t / 260);
+      c.globalAlpha = 0.35 + 0.65 * (v + 1) / 2;
+      c.beginPath(); c.arc(i * slot + slot / 2, mid + v * h * 0.28, Math.max(1.6, Math.min(4, slot * 0.22)) * (1 + v * 0.25), 0, Math.PI * 2); c.fill();
     }
     c.globalAlpha = 1;
   } else if (kind === 'confetti') {      // slow confetti in the accent colour and its shades
@@ -817,7 +815,7 @@ function drawMore(kind, c, w, h, t, ink) {
 
 // Animations that fill the whole canvas fade out at its edges instead of ending in a hard box.
 const SOFT_EDGES = new Set(['waves', 'aurora', 'fireflies', 'starfield', 'matrix', 'rain', 'bubbles', 'grid', 'ocean',
-                            'confetti', 'fire', 'helix', 'voice', 'lava']);
+                            'confetti', 'snow', 'helix', 'voice', 'runner']);
 function softEdges(c, w, h) {
   c.save();
   c.globalCompositeOperation = 'destination-in';
