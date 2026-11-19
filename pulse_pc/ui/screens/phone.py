@@ -345,8 +345,15 @@ class PhoneScreen(QWidget):
             row = self.devices.rowCount()
             self.devices.insertRow(row)
             online = is_online(device.get("last_seen"))
-            name = QTableWidgetItem(("● " if online else "○ ") + (device.get("name") or "Телефон"))
-            name.setToolTip("На связи" if online else "Не на связи")
+            web = device.get("kind") == mobile_access.KIND_WEB
+            suffix = (" · 🔒" if device.get("secure") else " · без шифрования") if web else ""
+            name = QTableWidgetItem(("● " if online else "○ ") + (device.get("name") or "Телефон") + suffix)
+            tip = "На связи" if online else "Не на связи"
+            if web:
+                tip += ("\nВеб-панель, подключена по HTTPS: с доступом «Полный» управляет музыкой." if device.get("secure")
+                        else "\nВеб-панель без шифрования (HTTP): только просмотр. Для управления музыкой "
+                             "отзовите и подключите снова в защищённом режиме.")
+            name.setToolTip(tip)
             self.devices.setItem(row, 0, name)
             seen = QTableWidgetItem(ago(device.get("last_seen")))
             seen.setData(Qt.ItemDataRole.UserRole, device.get("last_seen"))
@@ -356,7 +363,8 @@ class PhoneScreen(QWidget):
             access = QComboBox()
             access.addItem("Полный", mobile_access.ACCESS_FULL)
             access.addItem("Только просмотр", mobile_access.ACCESS_VIEW)
-            access.setToolTip("«Только просмотр»: показатели и что играет, без управления, файлов и скриншотов.")
+            access.setToolTip("Полный: музыка — пауза, треки, перемотка, громкость ПК (только по HTTPS)."
+                              if web else "«Только просмотр»: показатели и что играет, без управления, файлов и скриншотов.")
             access.setCurrentIndex(0 if device.get("access", mobile_access.ACCESS_FULL) == mobile_access.ACCESS_FULL else 1)
             access.currentIndexChanged.connect(
                 lambda _=0, d=device, box=access: self.services.local_api.set_access(d["id"], box.currentData()))

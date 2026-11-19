@@ -3,6 +3,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from aiohttp import web
 from aiohttp.test_utils import TestClient, TestServer
 
 from modules import display_api, mobile_access, player_access
@@ -29,6 +30,43 @@ class WebPanelSettingsTest(unittest.TestCase):
 
     def test_code_only_in_fragment(self):
         self.assertEqual(web_settings.pairing_link("192.168.1.5", 8780, "123456"), "http://192.168.1.5:8780/#pair=123456")
+
+
+class HomeCertificateTest(unittest.TestCase):
+    def setUp(self):
+        self.patch = mock.patch("pulse_pc.services.web_panel.tls.SecretStore")
+        self.patch.start().return_value.get.return_value = "p" * 32
+        self.dir = tempfile.mkdtemp()
+
+    def tearDown(self):
+        self.patch.stop()
+
+    def test_chain_is_valid_only_for_home_addresses(self):
+        import ipaddress
+        from cryptography import x509
+        from cryptography.x509.verification import PolicyBuilder, Store
+        from pulse_pc.services.web_panel import tls
+        cert_path, _key, _pw = tls.ensure_server_certificate(self.dir, ["192.168.10.6", "8.8.8.8"])
+        ca = x509.load_pem_x509_certificate((Path(self.dir) / tls.FOLDER / tls.CA_CERT).read_bytes())
+        leaf = x509.load_pem_x509_certificate(cert_path.read_bytes())
+        ips = leaf.extensions.get_extension_for_class(x509.SubjectAlternativeName).value.get_values_for_type(x509.IPAddress)
+        self.assertEqual(sorted(map(str, ips)), ["127.0.0.1", "192.168.10.6"])      # never a public address
+        verifier = PolicyBuilder().store(Store([ca])).build_server_verifier(x509.IPAddress(ipaddress.ip_address("192.168.10.6")))
+        self.assertEqual(len(verifier.verify(leaf, [])), 2)
+        self.assertLessEqual((leaf.not_valid_after_utc - leaf.not_valid_before_utc).days, 397)   # Apple: <= 825
+
+    def test_certificate_is_reused_and_renewed_on_new_address(self):
+        from pulse_pc.services.web_panel import tls
+        first = tls.ensure_server_certificate(self.dir, ["192.168.10.6"])[0].read_bytes()
+        self.assertEqual(tls.ensure_server_certificate(self.dir, ["192.168.10.6"])[0].read_bytes(), first)
+        self.assertNotEqual(tls.ensure_server_certificate(self.dir, ["192.168.10.7"])[0].read_bytes(), first)
+
+    def test_iphone_profile(self):
+        import plistlib
+        from pulse_pc.services.web_panel import tls
+        profile = plistlib.loads(tls.mobileconfig(self.dir))
+        self.assertEqual(profile["PayloadContent"][0]["PayloadType"], "com.apple.security.root")
+        self.assertEqual(profile["PayloadContent"][0]["PayloadContent"], tls.authority_der(self.dir))
 
 
 class DeviceKindsTest(unittest.TestCase):
@@ -110,8 +148,8 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_hello_metrics_media(self):
         ws = await self.client.ws_connect(f"/ws?t={await self.paired()}")
-        found = await self.messages(ws, 3)
-        self.assertEqual(set(found), {"hello", "metrics", "media"})
+        found = await self.messages(ws, 4)
+        self.assertTrue({"hello", "access", "metrics", "media"} <= set(found) | {"metrics"})
         self.assertFalse(found["hello"]["control"])
         await ws.close()
 
@@ -126,23 +164,61 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
         player_access.control_player.assert_not_called()
         await ws.close()
 
-    async def test_full_access_runs_only_playback(self):
-        token = await self.paired()
+    async def full_access(self, secure_pairing):
+        """A browser with «Полный»; secure_pairing: paired over HTTPS."""
+        with mock.patch.object(web.BaseRequest, "secure", new_callable=mock.PropertyMock, return_value=secure_pairing):
+            token = await self.paired()
         mobile_access.set_access(mobile_access.load()["devices"][0]["id"], mobile_access.ACCESS_FULL)
-        ws = await self.client.ws_connect(f"/ws?t={token}")
+        return token
+
+    async def commands(self, ws, *sent, wait_for=None):
+        """Send commands; read until wait_for() is true (or, without it, until the first error)."""
+        errors = []
         with mock.patch("modules.monitor.workstation_locked", return_value=False):
-            await ws.send_json({"type": "command", "action": "shutdown"})
-            await ws.send_json({"type": "command", "action": "next"})
-            errors = []
-            for _ in range(8):
+            for action, value in sent:
+                await ws.send_json({"type": "command", "action": action, "value": value})
+            for _ in range(15):
                 msg = await ws.receive_json(timeout=5)
                 if msg["type"] == "error":
                     errors.append(msg["code"])
-                if player_access.control_player.await_count:
+                    if wait_for is None:
+                        break
+                if wait_for is not None and wait_for():
                     break
-        self.assertIn("bad_command", errors)
-        player_access.control_player.assert_awaited_with("next")
+        return errors
+
+    async def test_plain_http_never_controls(self):
+        token = await self.full_access(secure_pairing=True)
+        ws = await self.client.ws_connect(f"/ws?t={token}")           # the test server is HTTP
+        found = await self.messages(ws, 3)
+        errors = await self.commands(ws, ("next", None))
+        self.assertIn("view_only", errors)
+        player_access.control_player.assert_not_called()
+        self.assertIn("access", found)
         await ws.close()
+
+    async def test_https_full_access_controls_music_only(self):
+        token = await self.full_access(secure_pairing=True)
+        with mock.patch.object(web.BaseRequest, "secure", new_callable=mock.PropertyMock, return_value=True), \
+                mock.patch("modules.volume.AVAILABLE", True), mock.patch("modules.volume.set_level") as set_level:
+            ws = await self.client.ws_connect(f"/ws?t={token}")
+            errors = await self.commands(ws, ("shutdown", None), ("source", "spotify.exe"), ("seek", 42),
+                                         ("volume", 30), ("next", None),
+                                         wait_for=lambda: player_access.control_player.await_count >= 2)
+            await ws.close()
+        self.assertIn("bad_command", errors)
+        player_access.control_player.assert_any_await("seek", 42.0, "spotify.exe")
+        player_access.control_player.assert_any_await("next", None, "spotify.exe")
+        set_level.assert_called_with(30)
+
+    async def test_paired_over_http_cannot_control_even_on_https(self):
+        token = await self.full_access(secure_pairing=False)
+        with mock.patch.object(web.BaseRequest, "secure", new_callable=mock.PropertyMock, return_value=True):
+            ws = await self.client.ws_connect(f"/ws?t={token}")
+            errors = await self.commands(ws, ("toggle", None))
+            await ws.close()
+        self.assertIn("view_only", errors)
+        player_access.control_player.assert_not_called()
 
     async def test_revoked_browser_is_disconnected(self):
         token = await self.paired()

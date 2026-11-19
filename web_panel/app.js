@@ -1,23 +1,30 @@
-// PulseDeck Panel in the browser. The browser pairs once with the 6-digit code from
-// «Телефон» on the PC (POST /pair) and keeps its own token; then it talks to PulseDeck
-// over a WebSocket (/ws). Values come from the PC as they are; unknown ones stay «—».
-// Messages as for the Android panel: hello, metrics, media, error; plus access (control on/off).
+// PulseDeck Panel in the browser.
+//
+// Start: on plain HTTP the page asks the PC for its HTTPS port (/info) and checks whether this
+// phone already trusts the PC's home certificate; if yes it moves to https://…, otherwise it
+// shows «Защищённый режим» (install the certificate) with «only view» as the way out.
+// Pairing: once, with the 6-digit code from «Телефон» (POST /pair); the token is kept per origin.
+// Then a WebSocket (/ws): hello, access, metrics, media, sessions, error. Values come from the
+// PC as they are; unknown ones stay «—».
 'use strict';
 
 const TOKEN_STORE = 'pulsedeck.token';
+const SKIP_STORE = 'pulsedeck.insecure';
 const $ = (id) => document.getElementById(id);
-const state = { token: '', ws: null, retry: 0, control: false, media: null, mediaAt: 0, coverKey: '' };
+const state = {
+  token: '', ws: null, retry: 0, control: false, secure: location.protocol === 'https:', reason: '',
+  media: null, mediaAt: 0, coverKey: '', seeking: false, volumeBusy: 0, httpsPort: 0,
+};
 
-// ----- token of this browser -----
-function loadToken() {
-  try { return localStorage.getItem(TOKEN_STORE) || ''; } catch (e) { return ''; }
-}
-function saveToken(token) {
-  state.token = token;
-  try { localStorage.setItem(TOKEN_STORE, token); } catch (e) { /* private mode: only for this visit */ }
-}
+// ----- storage -----
+const store = {
+  get(key) { try { return localStorage.getItem(key) || ''; } catch (e) { return ''; } },
+  set(key, value) { try { localStorage.setItem(key, value); } catch (e) { /* private mode */ } },
+  drop(key) { try { localStorage.removeItem(key); } catch (e) { /* ignore */ } },
+};
+
 function forgetToken(reason) {
-  try { localStorage.removeItem(TOKEN_STORE); } catch (e) { /* ignore */ }
+  store.drop(TOKEN_STORE);
   state.token = '';
   if (state.ws) state.ws.close();
   showPairing(reason);
@@ -26,16 +33,61 @@ function forgetToken(reason) {
 // «Браузер (iPhone)», «Браузер (Android)» … — the name shown in «Телефон» on the PC.
 function deviceName() {
   const ua = navigator.userAgent;
-  const where = /iPad/.test(ua) ? 'iPad' : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android'
+  const where = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'iPad'
+    : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android'
     : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : 'устройство';
   return `Браузер (${where})`;
+}
+const isApple = () => /iPhone|iPad|Macintosh/.test(navigator.userAgent);
+
+function only(id) {
+  for (const screen of ['setup', 'pairing', 'panel']) $(screen).hidden = screen !== id;
+  $('offline').hidden = true;
+}
+
+// ----- secure mode (HTTP → HTTPS) -----
+async function httpsTrusted(port) {
+  if (!port) return false;
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    await fetch(`https://${location.hostname}:${port}/info`, { mode: 'no-cors', cache: 'no-store', signal: controller.signal });
+    clearTimeout(timer);
+    return true;            // the TLS handshake succeeded: the certificate is trusted
+  } catch (e) {
+    return false;
+  }
+}
+
+let pendingCode = '';        // pairing code from the QR, kept while the user installs the certificate
+
+function goSecure() {
+  const hash = pendingCode ? `#pair=${encodeURIComponent(pendingCode)}` : '';
+  location.replace(`https://${location.hostname}:${state.httpsPort}/${hash}`);
+}
+
+function showSetup(message) {
+  only('setup');
+  $('steps-ios').hidden = !isApple();
+  $('steps-android').hidden = isApple();
+  $('setuperror').hidden = !message;
+  $('setuperror').textContent = message || '';
+}
+
+async function checkSecure(manual) {
+  $('check-https').disabled = true;
+  $('check-https').textContent = 'Проверяю…';
+  const ok = await httpsTrusted(state.httpsPort);
+  $('check-https').disabled = false;
+  $('check-https').textContent = 'Проверить';
+  if (ok) { goSecure(); return true; }
+  if (manual) showSetup('Сертификат пока не принят. Проверьте, что включено «Доверие сертификатам» (iPhone) или сертификат ЦС установлен (Android).');
+  return false;
 }
 
 // ----- pairing -----
 function showPairing(reason) {
-  $('panel').hidden = true;
-  $('offline').hidden = true;
-  $('pairing').hidden = false;
+  only('pairing');
   const error = $('pairerror');
   error.hidden = !reason;
   error.textContent = reason || '';
@@ -53,12 +105,12 @@ async function pair(code) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data.token) throw new Error(data.error || 'ПК отклонил подключение.');
-    saveToken(data.token);
-    $('pairing').hidden = true;
-    $('panel').hidden = false;
+    state.token = data.token;
+    store.set(TOKEN_STORE, data.token);
+    only('panel');
     connect();
   } catch (e) {
-    showPairing(e.message === 'Failed to fetch' ? 'Нет связи с ПК. Телефон в той же сети Wi-Fi?' : e.message);
+    showPairing(e.message === 'Failed to fetch' || e.name === 'TypeError' ? 'Нет связи с ПК. Телефон в той же сети Wi-Fi?' : e.message);
   } finally {
     $('pairbtn').disabled = false;
     $('pairbtn').textContent = 'Подключить';
@@ -87,7 +139,6 @@ function clockTime(sec) {
 }
 const setBar = (el, value) => { el.style.width = (value == null ? 0 : Math.min(100, Math.max(0, value))) + '%'; };
 
-// ----- clock (phone time) -----
 function tickClock() {
   const now = new Date();
   $('time').textContent = now.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
@@ -104,8 +155,7 @@ function tile(id, load, sub) {
 
 function showMetrics(m) {
   tile('cpu', m.cpu.load, m.cpu.name || (m.cpu.cores ? `${m.cpu.cores} потоков` : ''));
-  const ramSub = m.ram.used != null && m.ram.total ? `${bytes(m.ram.used)} из ${bytes(m.ram.total)}` : '';
-  tile('ram', m.ram.percent, ramSub);
+  tile('ram', m.ram.percent, m.ram.used != null && m.ram.total ? `${bytes(m.ram.used)} из ${bytes(m.ram.total)}` : '');
   let gpuSub = m.gpu.name || '';
   if (m.gpu.memory_total && m.gpu.memory_used != null) gpuSub += ` · ${bytes(m.gpu.memory_used)} / ${bytes(m.gpu.memory_total)}`;
   tile('gpu', m.gpu.load, gpuSub);
@@ -150,7 +200,6 @@ function showMedia(msg) {
   $('artist').textContent = s ? [s.artist, s.album].filter(Boolean).join(' · ') : '';
   $('source').textContent = s ? (s.status === 'playing' ? 'Играет' : 'Пауза') + (s.source ? ' · ' + s.source : '') : 'Сейчас играет';
   $('progress').hidden = !(s && s.duration > 0);
-  showControls();
   const coverKey = s && s.cover ? s.cover : '';
   if (coverKey !== state.coverKey) {
     state.coverKey = coverKey;
@@ -164,7 +213,27 @@ function showMedia(msg) {
       img.removeAttribute('src');
     }
   }
+  const vol = msg.system_volume;
+  $('volumerow').hidden = !vol;
+  if (vol && performance.now() - state.volumeBusy > 1500) {      // not while the finger moves the slider
+    $('volume').value = vol.level;
+    $('volumevalue').textContent = vol.muted ? 'без звука' : `${vol.level}%`;
+  }
+  showControls();
   tickProgress();
+}
+
+function showSessions(items) {
+  const select = $('source');
+  const chosen = select.value;
+  const options = [new Option('Автоматически', '')];
+  for (const s of items) {
+    const label = s.title ? `${s.source} — ${s.title}` : s.source;
+    options.push(new Option(label.slice(0, 60), s.id));
+  }
+  select.replaceChildren(...options);
+  select.value = options.some((o) => o.value === chosen) ? chosen : '';
+  if (select.value !== chosen) send('source', '');      // the chosen app stopped playing
 }
 
 function showControls() {
@@ -172,23 +241,51 @@ function showControls() {
   $('controls').hidden = !(s && state.control);
   $('playbtn').textContent = s && s.status === 'playing' ? '⏸' : '▶';
   $('playbtn').setAttribute('aria-label', s && s.status === 'playing' ? 'Пауза' : 'Играть');
+  $('seek').disabled = !state.control;
+  $('volume').disabled = !state.control;
+  const hint = $('accesshint');
+  if (state.control) {
+    hint.hidden = true;
+  } else if (state.reason === 'view') {
+    hint.hidden = false;
+    hint.textContent = 'Только просмотр. Чтобы управлять музыкой, на ПК: «Телефон» → «Подключённые устройства» → «Доступ» → «Полный».';
+  } else if (state.reason === 'insecure') {
+    hint.hidden = false;
+    hint.textContent = state.secure
+      ? 'Этот телефон подключён без шифрования. Чтобы управлять музыкой, на ПК отзовите его и подключите снова — уже в защищённом режиме.'
+      : 'Управление музыкой — только в защищённом режиме (HTTPS). Нажмите, чтобы настроить.';
+    hint.onclick = state.secure ? null : () => { store.drop(SKIP_STORE); showSetup(); };
+  } else {
+    hint.hidden = true;
+  }
 }
 
 function tickProgress() {
   const s = state.media;
-  if (!s || !(s.duration > 0)) return;
+  if (!s || !(s.duration > 0) || state.seeking) return;
   let pos = s.position || 0;
   if (s.status === 'playing') pos += (performance.now() - state.mediaAt) / 1000;   // between updates from the PC
   pos = Math.min(pos, s.duration);
-  setBar($('seek'), 100 * pos / s.duration);
+  $('seek').max = Math.floor(s.duration);
+  $('seek').value = Math.floor(pos);
   $('pos').textContent = clockTime(pos);
   $('dur').textContent = clockTime(s.duration);
+}
+
+function send(action, value) {
+  if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+    state.ws.send(JSON.stringify(value === undefined ? { type: 'command', action } : { type: 'command', action, value }));
+  }
 }
 
 // ----- connection -----
 function setStatus(text, online) {
   $('state').textContent = text;
   $('dot').classList.toggle('on', online);
+}
+
+function statusText() {
+  return (state.control ? 'Подключено · управление' : 'Подключено · просмотр') + (state.secure ? ' · 🔒' : '');
 }
 
 function connect() {
@@ -203,32 +300,29 @@ function connect() {
     try { msg = JSON.parse(event.data); } catch (e) { return; }
     if (msg.type === 'hello') {
       $('pcname').textContent = msg.name || 'ПК';
-      state.control = !!msg.control;
-      setStatus(state.control ? 'Подключено · управление музыкой' : 'Подключено · просмотр', true);
-      $('offline').hidden = true;
-      $('pairing').hidden = true;
-      $('panel').hidden = false;
-      showControls();
+      only('panel');
     } else if (msg.type === 'access') {
       state.control = !!msg.control;
-      setStatus(state.control ? 'Подключено · управление музыкой' : 'Подключено · просмотр', true);
+      state.reason = msg.reason || '';
+      setStatus(statusText(), true);
       showControls();
     } else if (msg.type === 'metrics') {
       showMetrics(msg);
     } else if (msg.type === 'media') {
       showMedia(msg);
+    } else if (msg.type === 'sessions') {
+      showSessions(msg.items || []);
     } else if (msg.type === 'error') {
       flash(msg.message || 'Ошибка');
     }
   };
   ws.onclose = (event) => {
     if (state.ws === ws) state.ws = null;
-    if (event.code === 4001) {          // «Отозвать» on the PC
+    if (event.code === 4001) {
       forgetToken('Доступ этого телефона отозван на ПК. Чтобы подключиться снова, покажите новый код.');
       return;
     }
     if (!opened && state.token) {
-      // Refused before opening: either the token is unknown (revoked while offline) or the PC is away.
       fetch(`cover?key=&t=${encodeURIComponent(state.token)}`, { cache: 'no-store' }).then((r) => {
         if (r.status === 403) forgetToken('Этот телефон больше не подключён к ПК. Покажите на ПК новый код.');
         else scheduleReconnect();
@@ -257,7 +351,7 @@ function flash(text) {
   flashTimer = setTimeout(() => { $('message').textContent = ''; }, 4000);
 }
 
-// ----- keep the screen on (Wake Lock: Chrome, Safari 16.4+) -----
+// ----- keep the screen on (Wake Lock: HTTPS only; Chrome, Safari 16.4+) -----
 let wakeLock = null;
 let wantAwake = false;
 async function keepAwake(on) {
@@ -281,17 +375,40 @@ function updateAwakeButton() {
 }
 
 // ----- start -----
-document.addEventListener('DOMContentLoaded', () => {
+function startPanel(code) {
+  state.token = store.get(TOKEN_STORE);
+  if (code && !state.token) {
+    showPairing();
+    $('codeinput').value = code;
+    pair(code);
+    return;
+  }
+  if (!state.token) { showPairing(); return; }
+  only('panel');
+  connect();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
   tickClock();
   setInterval(tickClock, 1000);
   setInterval(tickProgress, 1000);
   $('controls').addEventListener('click', (event) => {
     const cmd = event.target.closest('button')?.dataset.cmd;
-    if (cmd && state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify({ type: 'command', action: cmd }));
+    if (cmd) send(cmd);
   });
+  const seek = $('seek');
+  seek.addEventListener('input', () => { state.seeking = true; $('pos').textContent = clockTime(Number(seek.value)); });
+  seek.addEventListener('change', () => {
+    state.seeking = false;
+    send('seek', Number(seek.value));
+    if (state.media) { state.media.position = Number(seek.value); state.mediaAt = performance.now(); }
+  });
+  const volume = $('volume');
+  volume.addEventListener('input', () => { state.volumeBusy = performance.now(); $('volumevalue').textContent = `${volume.value}%`; });
+  volume.addEventListener('change', () => { state.volumeBusy = performance.now(); send('volume', Number(volume.value)); });
+  $('source').addEventListener('change', () => send('source', $('source').value));
   $('awake').addEventListener('click', () => { wantAwake = !wakeLock; keepAwake(wantAwake); });
   updateAwakeButton();
-  // The browser drops the lock when the tab is hidden; take it again on return.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && wantAwake && wakeLock === null) keepAwake(true);
   });
@@ -299,22 +416,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const digits = event.target.value.replace(/\D/g, '').slice(0, 6);
     event.target.value = digits.length > 3 ? `${digits.slice(0, 3)} ${digits.slice(3)}` : digits;
   });
-  $('pairform').addEventListener('submit', (event) => {
-    event.preventDefault();
-    pair($('codeinput').value);
+  $('pairform').addEventListener('submit', (event) => { event.preventDefault(); pair($('codeinput').value); });
+  $('check-https').addEventListener('click', () => checkSecure(true));
+  $('skip-https').addEventListener('click', () => {
+    store.set(SKIP_STORE, '1');
+    startPanel(pendingCode);
   });
 
-  // QR code from the PC: http://pc:8780/#pair=123456 — the code is used once, then removed.
-  const fromQr = new URLSearchParams(location.hash.slice(1)).get('pair');
-  if (fromQr) history.replaceState(null, '', location.pathname);
-  state.token = loadToken();
-  if (fromQr && !state.token) {
-    showPairing();
-    $('codeinput').value = fromQr;
-    pair(fromQr);
+  // QR code from the PC: …/#pair=123456 — used once, then removed from the address bar.
+  pendingCode = new URLSearchParams(location.hash.slice(1)).get('pair') || '';
+
+  if (location.protocol === 'http:') {
+    // Plain HTTP: prefer the HTTPS panel when this phone already trusts the PC.
+    try {
+      const info = await (await fetch('info', { cache: 'no-store' })).json();
+      state.httpsPort = info.https_port || 0;
+    } catch (e) { state.httpsPort = 0; }
+    if (state.httpsPort && await httpsTrusted(state.httpsPort)) { goSecure(); return; }
+    if (pendingCode) history.replaceState(null, '', location.pathname);
+    if (state.httpsPort && !store.get(SKIP_STORE) && !store.get(TOKEN_STORE)) {
+      // New phone: offer the secure mode first; the code waits until the user decides.
+      showSetup();
+      return;
+    }
+    startPanel(pendingCode);
     return;
   }
-  if (!state.token) { showPairing(); return; }
-  $('panel').hidden = false;
-  connect();
+  if (pendingCode) history.replaceState(null, '', location.pathname);
+  startPanel(pendingCode);
 });

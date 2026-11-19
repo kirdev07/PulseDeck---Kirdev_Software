@@ -31,6 +31,35 @@
     <p class="muted small">После подключения этот телефон запомнится — код больше не понадобится. Отключить его можно на ПК: «Телефон» → «Отозвать».</p>
   </section>
 
+  <!-- HTTP: телефон ещё не доверяет домашнему сертификату ПК -->
+  <section id="setup" class="screen" hidden>
+    <img src="logo.svg" alt="" class="logo-big">
+    <h1>Защищённый режим</h1>
+    <p class="muted">Один раз установите домашний сертификат этого ПК — и панель будет открываться по HTTPS без предупреждений, а с доступом «Полный» можно управлять музыкой. Сертификат действует только для адресов домашней сети.</p>
+    <div class="steps" id="steps-ios" hidden>
+      <a class="button" href="ca.mobileconfig" id="get-ios">1. Скачать сертификат</a>
+      <ol>
+        <li>Safari спросит: «Разрешить загрузку профиля?» — <b>Разрешить</b>.</li>
+        <li><b>Настройки</b> → вверху «Профиль загружен» (или «Основные» → «VPN и управление устройством») → <b>Установить</b>.</li>
+        <li><b>Настройки → Основные → Об этом устройстве → Доверие сертификатам</b> → включите <b>PulseDeck</b>.</li>
+        <li>Вернитесь сюда и нажмите «Проверить».</li>
+      </ol>
+    </div>
+    <div class="steps" id="steps-android" hidden>
+      <a class="button" href="ca.crt" id="get-android">1. Скачать сертификат</a>
+      <ol>
+        <li><b>Настройки → Безопасность → Другие настройки безопасности → Установить из памяти</b> (или «Шифрование и учётные данные») → <b>Сертификат ЦС</b>.</li>
+        <li>Выберите скачанный <b>PulseDeck.crt</b> и подтвердите.</li>
+        <li>Вернитесь сюда и нажмите «Проверить».</li>
+      </ol>
+    </div>
+    <div class="setup-actions">
+      <button type="button" id="check-https">Проверить</button>
+      <button type="button" id="skip-https" class="link">Продолжить без шифрования (только просмотр)</button>
+    </div>
+    <p class="error" id="setuperror" hidden></p>
+  </section>
+
   <main id="panel" hidden>
     <header class="top">
       <div class="brand">
@@ -81,7 +110,7 @@
         <div class="title" id="title">Ничего не играет</div>
         <div class="artist" id="artist"></div>
         <div class="progress" id="progress" hidden>
-          <div class="bar"><i id="seek"></i></div>
+          <input type="range" id="seek" min="0" max="100" step="1" value="0" aria-label="Позиция трека" disabled>
           <div class="times"><span id="pos">0:00</span><span id="dur">0:00</span></div>
         </div>
         <div class="controls" id="controls" hidden>
@@ -90,6 +119,21 @@
           <button type="button" data-cmd="next" aria-label="Следующий">⏭</button>
         </div>
       </div>
+    </section>
+
+    <section class="card music-extra" id="musicextra">
+      <label class="row">
+        <span class="label">Источник</span>
+        <select id="source" aria-label="Что показывать и чем управлять">
+          <option value="">Автоматически</option>
+        </select>
+      </label>
+      <label class="row" id="volumerow" hidden>
+        <span class="label">Громкость ПК</span>
+        <input type="range" id="volume" min="0" max="100" step="1" value="0" aria-label="Громкость ПК" disabled>
+        <span id="volumevalue" class="vol">—</span>
+      </label>
+      <div class="hint" id="accesshint" hidden></div>
     </section>
 
     <section class="card">

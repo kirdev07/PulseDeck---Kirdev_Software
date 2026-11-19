@@ -76,8 +76,9 @@ KIND_APP = "app"          # PulseDesk / PulseDeck Panel (API v1 over TLS); devic
 KIND_WEB = "web"          # a phone browser with the web panel
 
 
-def add_device(name, kind=KIND_APP, access=None):
-    """Register a phone and return its token (shown only once)."""
+def add_device(name, kind=KIND_APP, access=None, secure=None):
+    """Register a phone and return its token (shown only once). secure: a browser paired
+    over HTTPS (its token never crossed the network unencrypted) — only those may control."""
     with LOCK:
         data = load()
         if len(data["devices"]) >= MAX_DEVICES:
@@ -89,6 +90,8 @@ def add_device(name, kind=KIND_APP, access=None):
             device["kind"] = kind
         if access is not None:
             device["access"] = access
+        if secure is not None:
+            device["secure"] = bool(secure)
         data["devices"].append(device)
         save(data)
         return token

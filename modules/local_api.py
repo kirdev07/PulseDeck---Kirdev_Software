@@ -548,12 +548,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None):
     @routes.get("/api/player/sessions")
     async def player_sessions(_):
         """Everything that can be controlled: the built-in player and media sessions of other apps."""
-        items = await now_playing.sessions() if now_playing.AVAILABLE else []
-        own = player_bridge.snapshot()
-        if own["active"]:
-            items.insert(0, {"id": "pulse", "source": "PulseDeck", "kind": "own", "title": own["title"],
-                             "artist": own["artist"], "status": own["status"], "current": False})
-        return web.json_response({"ok": True, "sessions": items})
+        return web.json_response({"ok": True, "sessions": await player_access.sessions()})
 
     @routes.post("/api/player/focus")
     async def player_focus(request):

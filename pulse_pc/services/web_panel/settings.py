@@ -2,7 +2,9 @@
 
 enabled   off by default — the panel is plain HTTP (phone browsers do not trust a home
           certificate), so the owner turns it on deliberately;
-port      8780 unless changed.
+port      8780 unless changed: plain HTTP — the setup page, the home certificate, view only;
+https     port + 1 (8781): the same panel over HTTPS once the phone trusts this PC's
+          home certificate (web_panel/tls.py); only there music can be controlled.
 
 Who may open it is decided per browser, like the apps: each browser pairs with the
 6-digit code from «Телефон» and is listed there (view only or music control, revocable).
@@ -23,8 +25,12 @@ def load(config_dir):
     except (OSError, ValueError):
         data = {}
     port = data.get("port")
-    return {"enabled": bool(data.get("enabled", False)),
-            "port": port if isinstance(port, int) and 1024 <= port <= 65535 else DEFAULT_PORT}
+    port = port if isinstance(port, int) and 1024 <= port < 65535 else DEFAULT_PORT
+    return {"enabled": bool(data.get("enabled", False)), "port": port}
+
+
+def https_port(port):
+    return port + 1
 
 
 def save(config_dir, data):
@@ -43,7 +49,12 @@ def update(config_dir, **changes):
 
 
 def address(host, port):
-    """The panel's address for a browser that is already paired."""
+    """The panel's address for a browser that is already paired (HTTPS once trusted)."""
+    return f"https://{host}:{https_port(port)}/"
+
+
+def setup_address(host, port):
+    """Plain HTTP page: pairing and the home certificate for a new phone."""
     return f"http://{host}:{port}/"
 
 

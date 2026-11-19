@@ -42,7 +42,8 @@ class PhoneState:
 @dataclass(frozen=True)
 class WebPanelState:
     status: str = UNKNOWN       # the browser panel server (services/web_panel)
-    port: int = 0               # 0 = not running
+    port: int = 0               # HTTP (setup, view only); 0 = not running
+    https_port: int = 0         # HTTPS with the home certificate; 0 = not running
     addresses: tuple = ()       # LAN addresses to open from a phone
     clients: int = 0            # browsers watching right now
     error: str = ""

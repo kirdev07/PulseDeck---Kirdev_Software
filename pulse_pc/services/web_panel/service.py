@@ -1,17 +1,23 @@
 """Web panel server: the Panel screen (clock, CPU/RAM/GPU, network, disks, now playing) in
 any phone browser on the home network, iPhone included. Files: web_panel/ next to the code.
 
-Pairing works like the apps: the owner presses «Показать код» on «Телефон» (choice
-«Браузер»), the browser sends the 6 digits to POST /pair and gets its own token, which it
-keeps. The browser then appears among the paired devices: view only by default, «Полный»
-allows play/pause/next/previous, «Отозвать» disconnects it.
+Two ports, one app:
+  * HTTP  (8780): the page for a new phone — pairing by code and the home certificate of
+    this PC (/ca.mobileconfig for iPhone, /ca.crt for Android); view only;
+  * HTTPS (8781): the same panel once the phone trusts that certificate (web_panel/tls.py).
 
-Security (it is plain HTTP, see settings.py):
-  * answers LAN addresses only, like the phone server;
-  * browser tokens are a separate kind (mobile_access.KIND_WEB): they open the web panel
-    and nothing else — never the TLS API of the apps; app tokens do not open the panel;
-  * the page holds no data without a token; nothing but playback can be run from it;
-  * a revoked browser is disconnected within AUTH_RECHECK_SECONDS.
+Pairing works like the apps: «Телефон» → «Показать код» → «Браузер»; the browser sends the
+6 digits to POST /pair and keeps its own token. Browsers are listed among the paired
+devices: view only by default; «Полный» lets a browser paired over HTTPS control music
+(play/pause, next/previous, seek, PC volume, which app is controlled). «Отозвать»
+disconnects it within AUTH_RECHECK_SECONDS.
+
+Security:
+  * LAN addresses only, like the phone server;
+  * browser tokens are a separate kind (mobile_access.KIND_WEB): they open the web panel and
+    nothing else — never the TLS API of the apps; app tokens do not open the panel;
+  * control needs an HTTPS connection AND a browser paired over HTTPS (its token never
+    crossed the network unencrypted) AND «Полный»; nothing but music can be run from it.
 """
 import asyncio
 import logging
@@ -35,17 +41,19 @@ TYPES = {".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".s
 METRICS_SECONDS = 2.0
 MEDIA_SECONDS = 1.0
 MEDIA_RESYNC_SECONDS = 5.0
+SESSIONS_SECONDS = 3.0
 AUTH_RECHECK_SECONDS = 5.0
 MAX_CLIENTS = 8
 CLOSE_REVOKED = 4001
-COMMANDS = {"toggle", "next", "prev"}
+COMMANDS = {"toggle", "next", "prev", "seek", "volume", "source"}
 SECURITY_HEADERS = {
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
+    # https: — the HTTP setup page checks whether the phone already trusts the HTTPS panel.
     "Content-Security-Policy": ("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
-                                "connect-src 'self' ws: wss:; frame-ancestors 'none'"),
+                                "connect-src 'self' ws: wss: https:; frame-ancestors 'none'"),
 }
 
 
@@ -54,7 +62,11 @@ def browser(token):
     return mobile_access.authenticate(token, mobile_access.KIND_WEB)
 
 
-def make_app(on_clients=lambda n: None, pairing=None):
+def may_control(device, secure_connection):
+    return bool(secure_connection and (device or {}).get("secure") and mobile_access.can_control(device))
+
+
+def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_port=0):
     from modules.display_api import MetricsReader, _same_track, media_message, system_volume_state
     from modules.local_api import is_private_ip
     from modules.monitor import workstation_locked
@@ -79,6 +91,23 @@ def make_app(on_clients=lambda n: None, pairing=None):
             raise web.HTTPNotFound()
         return web.FileResponse(path, headers={"Content-Type": TYPES.get(path.suffix, "application/octet-stream")})
 
+    async def info(request):
+        return web.json_response({"ok": True, "secure": request.secure, "https_port": https_port,
+                                  "name": socket.gethostname()})
+
+    async def authority(request):
+        """The home certificate for the phone: profile for iPhone/iPad, DER for Android."""
+        if not config_dir:
+            raise web.HTTPNotFound()
+        from pulse_pc.services.web_panel import tls
+        if request.path.endswith(".mobileconfig"):
+            body = await asyncio.to_thread(tls.mobileconfig, config_dir)
+            return web.Response(body=body, content_type="application/x-apple-aspen-config",
+                                headers={"Content-Disposition": 'attachment; filename="PulseDeck.mobileconfig"'})
+        body = await asyncio.to_thread(tls.authority_der, config_dir)
+        return web.Response(body=body, content_type="application/x-x509-ca-cert",
+                            headers={"Content-Disposition": 'attachment; filename="PulseDeck.crt"'})
+
     async def pair(request):
         """6-digit code from «Телефон» → a token of this browser, kept by the page."""
         try:
@@ -100,10 +129,11 @@ def make_app(on_clients=lambda n: None, pairing=None):
             return web.json_response({"ok": False, "error": text}, status=403)
         try:
             token = await asyncio.to_thread(mobile_access.add_device, name, mobile_access.KIND_WEB,
-                                            mobile_access.ACCESS_VIEW)
+                                            mobile_access.ACCESS_VIEW, request.secure)
         except ValueError as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=409)
-        logger.info("Браузер «%s» подключён к веб-панели по коду (%s)", name, request.remote)
+        logger.info("Браузер «%s» подключён к веб-панели по коду (%s, %s)", name, request.remote,
+                    "HTTPS" if request.secure else "HTTP, только просмотр")
         return web.json_response({"ok": True, "token": token, "name": socket.gethostname()})
 
     async def cover(request):
@@ -128,7 +158,17 @@ def make_app(on_clients=lambda n: None, pairing=None):
         logger.info("Веб-панель открыта: %s (%s)", device.get("name", "?"), request.remote)
         reader = MetricsReader()
         lock = asyncio.Lock()
-        access = {"control": mobile_access.can_control(device)}
+        secure = request.secure
+        view = {"control": may_control(device, secure), "source": "", "wake": asyncio.Event()}
+
+        def access_message():
+            if view["control"]:
+                reason = ""
+            elif not secure or not device.get("secure"):
+                reason = "insecure"     # HTTP, or paired over HTTP: set up HTTPS and pair again
+            else:
+                reason = "view"         # «Доступ» → «Полный» on the PC
+            return {"type": "access", "control": view["control"], "secure": secure, "reason": reason}
 
         async def send(message):
             async with lock:
@@ -149,18 +189,39 @@ def make_app(on_clients=lambda n: None, pairing=None):
             last, sent_at = None, 0.0
             while not ws.closed:
                 try:
-                    message = media_message(await player_access.current_player())
+                    message = media_message(await player_access.current_player(view["source"]))
                     message["system_volume"] = await asyncio.to_thread(system_volume_state)
+                    message["source_id"] = view["source"]
                     now = time.monotonic()
                     playing = (message["session"] or {}).get("status") == "playing"
-                    if not _same_track(message, last) or (playing and now - sent_at >= MEDIA_RESYNC_SECONDS):
+                    if not _same_track(message, last) or (playing and now - sent_at >= MEDIA_RESYNC_SECONDS) \
+                            or message.get("source_id") != (last or {}).get("source_id"):
                         await send(message)
                         last, sent_at = message, now
                 except (ConnectionError, RuntimeError):
                     return
                 except Exception:  # noqa: BLE001 - media sessions disappear mid-read
                     logger.debug("Веб-панель: плеер недоступен", exc_info=True)
-                await asyncio.sleep(MEDIA_SECONDS)
+                view["wake"].clear()
+                try:        # a command wakes the loop at once, so the page sees the result quickly
+                    await asyncio.wait_for(view["wake"].wait(), MEDIA_SECONDS)
+                except asyncio.TimeoutError:
+                    pass
+
+        async def sessions_loop():
+            last = None
+            while not ws.closed:
+                try:
+                    items = [{"id": s.get("id", ""), "source": s.get("source", ""), "title": s.get("title", ""),
+                              "status": s.get("status", "")} for s in await player_access.sessions()]
+                    if items != last:
+                        await send({"type": "sessions", "items": items})
+                        last = items
+                except (ConnectionError, RuntimeError):
+                    return
+                except Exception:  # noqa: BLE001
+                    logger.debug("Веб-панель: список плееров недоступен", exc_info=True)
+                await asyncio.sleep(SESSIONS_SECONDS)
 
         async def auth_loop():
             # «Отозвать» on the PC must cut an open page; «Доступ» changes apply live.
@@ -171,15 +232,35 @@ def make_app(on_clients=lambda n: None, pairing=None):
                     logger.info("Доступ браузера к веб-панели отозван.")
                     await ws.close(code=CLOSE_REVOKED, message=b"revoked")
                     return
-                control = mobile_access.can_control(current)
-                if control != access["control"]:
-                    access["control"] = control
-                    await send({"type": "access", "control": control})
+                control = may_control(current, secure)
+                device.update(current)
+                if control != view["control"]:
+                    view["control"] = control
+                    await send(access_message())
+
+        async def run(action, value):
+            if action == "source":
+                view["source"] = value if isinstance(value, str) and len(value) <= 300 else ""
+                return
+            if action == "seek":
+                if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
+                    raise ValueError("Позиция — число секунд.")
+                await player_access.control_player("seek", float(value), view["source"])
+            elif action == "volume":
+                from modules import volume
+                if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 100:
+                    raise ValueError("Громкость — число от 0 до 100.")
+                if not volume.AVAILABLE:
+                    raise ValueError("Громкость ПК недоступна.")
+                await asyncio.to_thread(volume.set_level, value)
+            else:
+                await player_access.control_player(action, None, view["source"])
 
         await send({"type": "hello", "app": "PulseDeck", "name": socket.gethostname(),
-                    "device": device.get("name", ""), "control": access["control"],
+                    "device": device.get("name", ""), "control": view["control"], "secure": secure,
                     "metrics_interval": METRICS_SECONDS})
-        tasks = [asyncio.create_task(loop()) for loop in (metrics_loop, media_loop, auth_loop)]
+        await send(access_message())
+        tasks = [asyncio.create_task(loop()) for loop in (metrics_loop, media_loop, sessions_loop, auth_loop)]
         try:
             async for msg in ws:
                 if msg.type != WSMsgType.TEXT:
@@ -196,15 +277,19 @@ def make_app(on_clients=lambda n: None, pairing=None):
                     action = data.get("action")
                     if action not in COMMANDS:
                         await send({"type": "error", "code": "bad_command", "message": "Команда не поддерживается."})
-                    elif not access["control"]:
+                    elif action == "source":        # what to watch: allowed for view-only browsers too
+                        await run(action, data.get("value"))
+                        view["wake"].set()
+                    elif not view["control"]:
                         await send({"type": "error", "code": "view_only",
-                                    "message": "Только просмотр. Управление музыкой включается на ПК: "
-                                               "«Телефон» → «Доступ» → «Полный»."})
+                                    "message": "Только просмотр." if secure and device.get("secure") else
+                                    "Управление — только в защищённом режиме (HTTPS)."})
                     elif await asyncio.to_thread(workstation_locked):
                         await send({"type": "error", "code": "locked", "message": "ПК заблокирован."})
                     else:
                         try:
-                            await player_access.control_player(action)
+                            await run(action, data.get("value"))
+                            view["wake"].set()
                         except ValueError as exc:
                             await send({"type": "error", "code": "player", "message": str(exc)})
         finally:
@@ -225,6 +310,9 @@ def make_app(on_clients=lambda n: None, pairing=None):
     app.on_shutdown.append(close_clients)
     app.router.add_get("/ws", socket_handler)
     app.router.add_get("/cover", cover)
+    app.router.add_get("/info", info)
+    app.router.add_get("/ca.crt", authority)
+    app.router.add_get("/ca.mobileconfig", authority)
     app.router.add_post("/pair", pair)
     for path in FILES:
         app.router.add_get(path, static)
@@ -259,34 +347,50 @@ class WebPanelService:
             return
         data = await asyncio.to_thread(web_settings.load, self.config_dir)
         if not data["enabled"]:
-            self._post(status=st.STOPPED, port=0, addresses=(), clients=0, error="")
+            self._post(status=st.STOPPED, port=0, https_port=0, addresses=(), clients=0, error="")
             return
         if not (WEB_ROOT / "index.html").is_file():
-            self._post(status=st.ERROR, port=0, error=f"Нет файлов веб-панели: {WEB_ROOT}")
+            self._post(status=st.ERROR, port=0, https_port=0, error=f"Нет файлов веб-панели: {WEB_ROOT}")
             return
         self._post(status=st.STARTING, error="")
-        runner = web.AppRunner(make_app(lambda n: self._post(clients=n)), access_log=None)
+        from modules.local_api import lan_addresses
+        addresses = tuple(await asyncio.to_thread(lan_addresses))
+        https = web_settings.https_port(data["port"])
+        app = make_app(lambda n: self._post(clients=n), config_dir=self.config_dir, https_port=https)
+        runner = web.AppRunner(app, access_log=None)
         await runner.setup()
         try:
             await web.TCPSite(runner, "0.0.0.0", data["port"]).start()
         except OSError:
             await runner.cleanup()
-            self._post(status=st.ERROR, port=0, addresses=(),
+            self._post(status=st.ERROR, port=0, https_port=0, addresses=(),
                        error=f"Порт {data['port']} занят другой программой. Выберите другой в настройках.")
             logger.error("Веб-панель: порт %s занят.", data["port"])
             return
+        error = ""
+        try:
+            from pulse_pc.services.web_panel import tls
+            context = await asyncio.to_thread(tls.server_context, self.config_dir, addresses)
+            await web.TCPSite(runner, "0.0.0.0", https, ssl_context=context).start()
+        except OSError:
+            https = 0
+            error = f"HTTPS-порт {web_settings.https_port(data['port'])} занят: работает только просмотр по HTTP."
+            logger.error("Веб-панель: %s", error)
+        except Exception as exc:  # noqa: BLE001 - certificate problems leave HTTP working
+            https = 0
+            error = "Не удалось создать сертификат HTTPS: работает только просмотр по HTTP."
+            logger.exception("Веб-панель: сертификат HTTPS: %s", exc)
         self.runner = runner
-        from modules.local_api import lan_addresses
-        addresses = tuple(await asyncio.to_thread(lan_addresses))
-        self._post(status=st.RUNNING, port=data["port"], addresses=addresses, clients=0, error="")
-        logger.info("Веб-панель: http://%s:%s", addresses[0] if addresses else "localhost", data["port"])
+        self._post(status=st.RUNNING, port=data["port"], https_port=https, addresses=addresses, clients=0, error=error)
+        logger.info("Веб-панель: http://%s:%s, HTTPS %s", addresses[0] if addresses else "localhost", data["port"],
+                    https or "нет")
 
     async def _stop(self):
         if self.runner:
             await self.runner.cleanup()
             self.runner = None
             logger.info("Веб-панель остановлена.")
-        self._post(status=st.STOPPED, port=0, addresses=(), clients=0)
+        self._post(status=st.STOPPED, port=0, https_port=0, addresses=(), clients=0)
 
     async def _restart(self):
         await self._stop()

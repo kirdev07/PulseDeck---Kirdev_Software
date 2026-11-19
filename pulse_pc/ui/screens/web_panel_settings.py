@@ -31,14 +31,14 @@ class WebPanelSection:
         self.enabled = Toggle(data["enabled"])
         self.enabled.toggled.connect(lambda on: self._set(enabled=on))
         card.body.addLayout(_row("Включить веб-панель",
-                                 "Обычный HTTP без шифрования (браузеры телефонов не доверяют домашним сертификатам), "
-                                 "поэтому по умолчанию выключена.", self.enabled))
+                                 "По умолчанию выключена. HTTPS — с домашним сертификатом этого ПК, который действует "
+                                 "только для адресов домашней сети.", self.enabled))
         card.body.addWidget(divider())
         self.port = QSpinBox()
         self.port.setRange(1024, 65535)
         self.port.setValue(data["port"])
         self.port.setFixedWidth(110)
-        port_row = _row("Порт", f"По умолчанию {web_settings.DEFAULT_PORT}. Меняйте, если он занят другой программой.",
+        port_row = _row("Порт", f"По умолчанию {web_settings.DEFAULT_PORT} (HTTP), следующий — HTTPS. Меняйте, если порт занят.",
                         None)
         port_row.addWidget(self.port)
         port_row.addWidget(button("Применить", lambda: self._set(port=self.port.value()), "ghost"))
@@ -64,6 +64,8 @@ class WebPanelSection:
         connect.body.addWidget(self.message)
         connect.body.addWidget(label(
             "Подключение как у приложений: «Телефон» → «Показать код» → «Браузер», затем QR-код камерой телефона. "
+            "Новый телефон сначала предложит установить домашний сертификат ПК (один раз) — после этого панель "
+            "работает по HTTPS и с доступом «Полный» управляет музыкой: пауза, треки, перемотка, громкость ПК. "
             "Телефон запоминается и появляется в «Подключённых устройствах»: «Доступ» — только просмотр или "
             "управление музыкой, «Отозвать» сразу закрывает панель. На iPhone в Safari: «Поделиться» → "
             "«На экран Домой» — панель откроется как приложение.", "caption", wrap=True))
@@ -78,10 +80,13 @@ class WebPanelSection:
             self.refresh()
 
     def _addresses(self):
+        """HTTPS addresses when HTTPS runs, otherwise the HTTP ones."""
         state = self.store.state.web_panel if self.store is not None else None
         if not state or state.status != st.RUNNING or not state.port:
             return []
-        return [web_settings.address(host, state.port) for host in state.addresses]
+        if state.https_port:
+            return [web_settings.address(host, state.port) for host in state.addresses]
+        return [web_settings.setup_address(host, state.port) for host in state.addresses]
 
     def refresh(self):
         state = self.store.state.web_panel if self.store is not None else None
@@ -93,7 +98,8 @@ class WebPanelSection:
             self.detail.setText(state.error)
         elif addresses:
             watching = f" Сейчас открыта на {state.clients} устр." if state.clients else ""
-            self.detail.setText(f"Телефон должен быть в той же сети Wi-Fi, что и ПК.{watching}")
+            self.detail.setText(f"HTTPS {state.https_port} (защищённый режим) · HTTP {state.port} (новый телефон, "
+                                f"сертификат, просмотр). Телефон должен быть в той же сети Wi-Fi, что и ПК.{watching}")
         elif status == st.RUNNING:
             self.detail.setText("Сеть не найдена: подключите ПК к Wi-Fi или кабелем к роутеру.")
         else:

@@ -15,7 +15,7 @@ def public_devices(data):
     return tuple({"id": d.get("id", ""), "name": d.get("name", ""), "added": d.get("added", ""),
                   "last_seen": d.get("last_seen", ""),
                   "access": d.get("access", mobile_access.ACCESS_FULL),
-                  "kind": mobile_access.kind_of(d)} for d in data["devices"])
+                  "kind": mobile_access.kind_of(d), "secure": bool(d.get("secure"))} for d in data["devices"])
 
 
 class LocalApiService:

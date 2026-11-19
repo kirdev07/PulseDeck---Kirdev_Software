@@ -56,6 +56,16 @@ async def control_player(cmd, value=None, source=""):
         await asyncio.to_thread(media_keys.press, keys[cmd])
 
 
+async def sessions():
+    """Everything that can be controlled: the built-in player and media sessions of other apps."""
+    items = await now_playing.sessions() if now_playing.AVAILABLE else []
+    own = player_bridge.snapshot()
+    if own["active"]:
+        items.insert(0, {"id": "pulse", "source": "PulseDeck", "kind": "own", "title": own["title"],
+                         "artist": own["artist"], "status": own["status"], "current": False})
+    return items
+
+
 def cover(key):
     """(bytes, content type) of the cover with this key, or None."""
     own = player_bridge.snapshot()
