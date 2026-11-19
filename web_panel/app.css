@@ -142,9 +142,15 @@ input[type=range]:disabled::-moz-range-thumb { width: 0; height: 0; }
         padding: 8px 12px; text-align: center; }
 
 /* MetricsBar: icon 20, name 11 medium, value mono 11, caption 9, bar 3, dividers 1×30 */
-.metrics { width: 100%; display: flex; align-items: center; padding-bottom: 2px; }
-.metric { flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; }
-.metric + .metric::before { content: ""; flex: none; width: 1px; height: 30px; background: var(--border); margin: 0 12px 0 4px; }
+.metrics { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); row-gap: 8px;
+           overflow: hidden; padding-bottom: 2px; }
+/* A divider on the left of every tile; the first in each row hides it under the edge (overflow). */
+.metric { min-width: 0; display: flex; align-items: center; gap: 8px; cursor: pointer;
+          border-left: 1px solid var(--border); margin-left: -1px; padding: 2px 10px 2px 12px; border-radius: 0; }
+.metric:active { background: var(--surface2); }
+.spark { display: block; width: 100%; height: 16px; margin-top: 3px; }
+.corestrip { display: flex; align-items: flex-end; gap: 2px; height: 16px; margin-top: 3px; }
+.corestrip i { flex: 1; background: var(--accent); border-radius: 1px; min-height: 2px; opacity: .85; }
 .metric > .i { width: 20px; height: 20px; color: var(--text2); }
 .metric .body { flex: 1; min-width: 0; }
 .metric .head { display: flex; gap: 6px; font-size: 11px; font-weight: 500; color: var(--text2); white-space: nowrap; overflow: hidden; }
@@ -166,8 +172,7 @@ input[type=range]:disabled::-moz-range-thumb { width: 0; height: 0; }
   .player .track { flex: 1 1 0; }
   .side { flex-basis: 100%; flex-direction: row; justify-content: space-between; gap: 12px; }
   .volume { flex: 1; width: auto; max-width: 170px; }
-  .metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }
-  .metric + .metric::before { display: none; }
+  .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 0; }
   .metric .head, .metric .head .num { font-size: 12px; }
   .metric .sub { font-size: 10px; }
 }
@@ -235,7 +240,7 @@ html[data-layout="monitoring"] .cover { width: 48px; height: 48px; }
 html[data-layout="monitoring"] .metrics { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   gap: 10px; align-content: center; }
 html[data-layout="monitoring"] .metric { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; }
-html[data-layout="monitoring"] .metric + .metric::before { display: none; }
+html[data-layout="monitoring"] .metric { border-left: 0; margin-left: 0; }
 html[data-layout="monitoring"] .metric .head, html[data-layout="monitoring"] .metric .head .num { font-size: 15px; }
 html[data-layout="monitoring"] .metric .sub { font-size: 11px; margin: 3px 0 6px; }
 html[data-layout="monitoring"] .metric > .i { width: 24px; height: 24px; }
@@ -375,3 +380,17 @@ html.no-motion .buddy { display: none; }
   .pc-info { grid-column: 1 / -1; grid-row: 2; padding-left: 15px; }
   .pc-info .pc-extra:first-child::before, .pc-info .pc-extra[hidden] + .pc-extra::before { content: none; margin: 0; }
 }
+
+/* ----- tile details ----- */
+.detail-body { display: grid; gap: 10px; }
+.dgraph { width: 100%; height: 120px; display: block; background: var(--surface2); border-radius: 12px; }
+.dnote { font-size: 11px; color: var(--text3); }
+.drow { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+.drow span { color: var(--text2); }
+.drow b { font-weight: 500; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dcores { display: grid; grid-template-columns: repeat(auto-fill, minmax(22px, 1fr)); gap: 6px; margin-top: 4px; }
+.dcore { display: grid; gap: 3px; justify-items: center; }
+.dcol { width: 100%; height: 56px; background: var(--surface2); border-radius: 4px; display: flex; align-items: flex-end; overflow: hidden; }
+.dcol i { display: block; width: 100%; background: var(--accent); }
+.dcore span { font-size: 9px; color: var(--text3); }
+.ddisk { display: grid; gap: 6px; }

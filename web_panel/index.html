@@ -162,6 +162,17 @@
     </div>
   </div>
 
+  <!-- Подробности плитки (нажатие на плитку внизу) -->
+  <div id="detail" class="sheet" hidden>
+    <div class="sheet-card" role="dialog" aria-modal="true" aria-labelledby="detail-title">
+      <div class="sheet-head">
+        <h2 id="detail-title">—</h2>
+        <button type="button" id="close-detail" class="icon-button" aria-label="Закрыть"><svg class="i"><use href="#i-close"/></svg></button>
+      </div>
+      <div id="detail-body" class="detail-body"></div>
+    </div>
+  </div>
+
   <div id="offline" class="offline" hidden>
     <div>
       <div class="offline-title">Нет связи с ПК</div>

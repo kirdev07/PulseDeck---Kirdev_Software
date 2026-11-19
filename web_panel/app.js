@@ -47,7 +47,7 @@ const TILES = {
   net: { icon: 'i-network', name: 'Сеть', title: 'Сеть' },
   disk: { icon: 'i-disk', name: 'Диск', title: 'Диск' },
   vram: { icon: 'i-gpu', name: 'VRAM', title: 'Видеопамять' },
-  uptime: { icon: 'i-power', name: 'ПК', title: 'Время работы ПК' },
+  cores: { icon: 'i-cpu', name: 'Ядра', title: 'Ядра процессора' },
   volume: { icon: 'i-volume', name: 'Звук', title: 'Громкость ПК' },
 };
 const DEFAULTS = {
@@ -56,7 +56,7 @@ const DEFAULTS = {
   bgDark: 'default', bgLight: 'default', clockColor: 'ink', uiFont: 'system', clockFont: 'system',
   idle: 'wave', idleSize: 'normal', buddy: 'none', motion: true, pulse: false,
   layout: 'panel', tiles: ['cpu', 'gpu', 'ram', 'net', 'disk'], tileOrder: Object.keys(TILES), disk: '',
-  playerAlways: false, showCover: true, showProgress: true, showVolume: true,
+  playerAlways: false, showCover: true, showProgress: true, showVolume: true, sparks: true,
   burnIn: true, offlineClock: true,
 };
 const CLOCK_COLORS = {          // «ink» = the theme's text colour (no override)
@@ -247,9 +247,64 @@ function uptime(sec) {
   return d ? `${d} д ${h} ч` : h ? `${h} ч ${m} мин` : `${m} мин`;
 }
 const setBar = (el, value) => { el.style.width = (value == null ? 0 : Math.min(100, Math.max(0, value))) + '%'; };
-const shortCpu = (name) => (name || '').replace(/\(R\)|\(TM\)|CPU|Processor|@.*$/gi, '').replace(/\s+/g, ' ')
-  .replace(/^\d+th Gen /i, '').trim();
-const shortGpu = (name) => (name || '').replace(/NVIDIA |GeForce |AMD |Radeon\(TM\) |Laptop GPU|\d+GB/gi, '').replace(/\s+/g, ' ').trim();
+// Short model names for the small tiles: «i5-13420H», «Ryzen 7 5800X», «RTX 3050».
+function shortCpu(name) {
+  const text = (name || '').replace(/\(R\)|\(TM\)/gi, '');
+  const model = text.match(/Core Ultra \d+ \w+|i[3579]-\w+|Ryzen \d+ \w+|Xeon \S+|Apple M\d\w*|Snapdragon \S+ \S+/i);
+  return model ? model[0].replace(/^Apple /, '') : text.replace(/CPU|Processor|@.*$/gi, '').replace(/\s+/g, ' ').trim();
+}
+function shortGpu(name) {
+  const text = (name || '').replace(/\(R\)|\(TM\)/gi, '');
+  const model = text.match(/(RTX|GTX|RX|Arc) ?[A-Z]?\d{3,4}( ?(Ti|SUPER|XT|XTX))?|(UHD|Iris Xe|Iris|Radeon) Graphics( \d+)?/i);
+  return model ? model[0] : text.replace(/NVIDIA |GeForce |AMD |Laptop GPU|\d+GB/gi, '').replace(/\s+/g, ' ').trim();
+}
+
+// ----- history for the tiles' sparklines and the detail graphs: the last ~3 minutes -----
+const HISTORY_POINTS = 90;
+const history = { cpu: [], gpu: [], ram: [], vram: [], down: [], up: [] };
+function remember(m) {
+  const vram = m.gpu.memory_total && m.gpu.memory_used != null ? 100 * m.gpu.memory_used / m.gpu.memory_total : null;
+  const values = { cpu: m.cpu.load, gpu: m.gpu.load, ram: m.ram.percent, vram, down: m.net.down, up: m.net.up };
+  for (const [key, value] of Object.entries(values)) {
+    history[key].push(value);
+    if (history[key].length > HISTORY_POINTS) history[key].shift();
+  }
+}
+const SERIES = { cpu: ['cpu'], gpu: ['gpu'], ram: ['ram'], vram: ['vram'], net: ['down', 'up'] };
+
+// A line graph of one or two series; percent series use 0..100, speeds their own maximum.
+function drawGraph(canvas, keys, { fill = true, percent = true } = {}) {
+  const ratio = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth, height = canvas.clientHeight;
+  if (!width || !height) return;
+  if (canvas.width !== Math.round(width * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); }
+  const c = canvas.getContext('2d');
+  c.setTransform(ratio, 0, 0, ratio, 0, 0);
+  c.clearRect(0, 0, width, height);
+  const ink = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
+  const top = percent ? 100 : Math.max(1, ...keys.flatMap((k) => history[k].filter((v) => v != null)));
+  keys.forEach((key, index) => {
+    const data = history[key];
+    if (data.length < 2) return;
+    const step = width / (HISTORY_POINTS - 1), start = width - (data.length - 1) * step;
+    c.beginPath();
+    let started = false;
+    data.forEach((v, i) => {
+      if (v == null) return;
+      const x = start + i * step, y = height - 1 - (Math.min(v, top) / top) * (height - 3);
+      if (!started) { c.moveTo(x, y); started = true; } else c.lineTo(x, y);
+    });
+    c.strokeStyle = ink;
+    c.globalAlpha = index ? 0.5 : 1;
+    c.lineWidth = index ? 1 : 1.4;
+    c.stroke();
+    if (fill && index === 0 && started) {
+      c.lineTo(width, height); c.lineTo(start, height); c.closePath();
+      c.globalAlpha = 0.12; c.fillStyle = ink; c.fill();
+    }
+    c.globalAlpha = 1;
+  });
+}
 
 function tickClock() {
   const now = new Date();
@@ -288,7 +343,11 @@ function tileData(id, m) {
       return { value: used != null && total ? pct(100 * used / total) : '—',
                sub: used != null && total ? `${bytes(used)} / ${bytes(total)}` : 'нет данных', bar: used != null && total ? 100 * used / total : null };
     }
-    case 'uptime': return { value: uptime(m.uptime), sub: 'время работы', bar: undefined };
+    case 'cores': {
+      const list = m.cpu.per_core || [];
+      return { value: list.length ? `${list.length}` : '—', sub: list.length ? `макс. ${pct(Math.max(...list))}` : 'нет данных',
+               bar: undefined, cores: list };
+    }
     case 'volume': {
       const vol = state.volume;
       return { value: vol ? (vol.muted ? 'без звука' : `${vol.level}%`) : '—', sub: 'громкость ПК', bar: vol ? vol.level : null };
@@ -306,8 +365,12 @@ function renderMetrics() {
       const cell = document.createElement('div');
       cell.className = 'metric';
       cell.dataset.tile = id;
+      cell.setAttribute('role', 'button');
+      cell.tabIndex = 0;
       cell.innerHTML = `<svg class="i"><use href="#${TILES[id].icon}"/></svg><div class="body"><div class="head">`
-        + `<span></span><b class="num">—</b></div><div class="sub">—</div><div class="bar"><i></i></div></div>`;
+        + `<span></span><b class="num">—</b></div><div class="sub">—</div><div class="bar"><i></i></div>`
+        + (SERIES[id] ? '<canvas class="spark"></canvas>' : '') + (id === 'cores' ? '<div class="corestrip"></div>' : '') + '</div>';
+      cell.addEventListener('click', () => openDetail(id));
       cell.querySelector('.head span').textContent = TILES[id].name;
       return cell;
     }));
@@ -321,7 +384,70 @@ function renderMetrics() {
     const bar = cell.querySelector('.bar');
     bar.classList.toggle('hidden-bar', data.bar === undefined);
     setBar(bar.querySelector('i'), data.bar);
+    const spark = cell.querySelector('.spark');
+    if (spark) {
+      spark.hidden = !prefs.sparks;
+      if (prefs.sparks) drawGraph(spark, SERIES[cell.dataset.tile], { percent: cell.dataset.tile !== 'net' });
+    }
+    if (data.cores) {
+      const strip = cell.querySelector('.corestrip');
+      if (strip.children.length !== data.cores.length) strip.replaceChildren(...data.cores.map(() => document.createElement('i')));
+      data.cores.forEach((v, i) => { strip.children[i].style.height = `${Math.max(8, v || 0)}%`; });
+    }
   }
+  if (!$('detail').hidden) renderDetail();
+}
+
+// ----- tap a tile: details with a bigger graph -----
+let detailId = '';
+function openDetail(id) {
+  detailId = id;
+  $('detail').hidden = false;
+  renderDetail();
+}
+function row(label, value) {
+  return el('div', { class: 'drow' }, el('span', { text: label }), el('b', { class: 'num', text: value }));
+}
+function renderDetail() {
+  const m = state.metrics;
+  const body = $('detail-body');
+  if (!m || !TILES[detailId]) return;
+  $('detail-title').textContent = TILES[detailId].title;
+  const parts = [];
+  if (SERIES[detailId]) {
+    const graph = el('canvas', { class: 'dgraph' });
+    parts.push(graph, el('div', { class: 'dnote', text: 'последние 3 минуты' }));
+    requestAnimationFrame(() => drawGraph(graph, SERIES[detailId], { percent: detailId !== 'net' }));
+  }
+  if (detailId === 'cpu' || detailId === 'cores') {
+    parts.push(row('Нагрузка', pct(m.cpu.load)), row('Процессор', m.cpu.name || '—'), row('Потоков', m.cpu.cores ?? '—'));
+    const cores = m.cpu.per_core || [];
+    if (cores.length) parts.push(el('div', { class: 'dcores' }, ...cores.map((v, i) => {
+      const fill = el('i'); fill.style.height = `${Math.max(2, v || 0)}%`;
+      return el('div', { class: 'dcore', title: `Ядро ${i + 1}: ${pct(v)}` }, el('div', { class: 'dcol' }, fill), el('span', { text: String(i + 1) }));
+    })));
+  } else if (detailId === 'gpu' || detailId === 'vram') {
+    const total = m.gpu.memory_total, used = m.gpu.memory_used;
+    parts.push(row('Нагрузка', pct(m.gpu.load)), row('Видеокарта', m.gpu.name || '—'),
+      row('Видеопамять', used != null && total ? `${bytes(used)} из ${bytes(total)}` : total ? `всего ${bytes(total)}` : '—'));
+  } else if (detailId === 'ram') {
+    parts.push(row('Занято', m.ram.used != null ? `${bytes(m.ram.used)} (${pct(m.ram.percent)})` : '—'),
+      row('Свободно', m.ram.used != null && m.ram.total ? bytes(m.ram.total - m.ram.used) : '—'), row('Всего', bytes(m.ram.total)));
+  } else if (detailId === 'net') {
+    parts.push(row('Приём ↓', speed(m.net.down)), row('Отдача ↑', speed(m.net.up)),
+      el('div', { class: 'dnote', text: 'Яркая линия — приём, бледная — отдача.' }));
+  } else if (detailId === 'disk') {
+    for (const d of m.disks || []) {
+      const fill = el('i'); setBar(fill, d.total ? 100 * (d.total - d.free) / d.total : null);
+      parts.push(el('div', { class: 'ddisk' }, row(d.label ? `${d.name} ${d.label}` : d.name, `${bytes(d.free)} свободно из ${bytes(d.total)}`),
+        el('div', { class: 'bar' }, fill)));
+    }
+  } else if (detailId === 'volume') {
+    const vol = state.volume;
+    parts.push(row('Громкость ПК', vol ? (vol.muted ? 'без звука' : `${vol.level}%`) : '—'),
+      el('div', { class: 'dnote', text: 'Менять громкость — ползунком в карточке плеера (нужен доступ «Полный»).' }));
+  }
+  body.replaceChildren(...parts);
 }
 
 // Next to the PC name: how long it has been on, and its battery if it is a laptop.
@@ -341,6 +467,7 @@ function showPcStatus(m) {
 let knownDisks = '';
 function showMetrics(m) {
   state.metrics = m;
+  remember(m);
   showPcStatus(m);
   renderMetrics();
   updateBuddy();
@@ -1185,6 +1312,9 @@ function buildSettings() {
         ...state.metrics.disks.map((d) => { const o = new Option(d.label ? `${d.name} ${d.label}` : d.name, d.name); o.selected = d.name === (prefs.disk || state.metrics.disks[0].name); return o; })))
       : null,
 
+    toggle('sparks', 'Мини-графики в плитках'),
+    el('div', { class: 'note-text', text: 'Нажмите на плитку — откроются подробности: большой график, ядра, все диски.' }),
+
     el('h3', { text: 'Плеер' }),
     toggle('playerAlways', 'Показывать, даже когда ничего не играет'),
     toggle('showCover', 'Обложка'),
@@ -1270,6 +1400,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   // settings sheet
   $('open-settings').addEventListener('click', () => { buildSettings(); $('sheet').hidden = false; });
   $('close-settings').addEventListener('click', () => { $('sheet').hidden = true; });
+  $('close-detail').addEventListener('click', () => { $('detail').hidden = true; });
+  $('detail').addEventListener('click', (event) => { if (event.target === $('detail')) $('detail').hidden = true; });
   $('sheet').addEventListener('click', (event) => { if (event.target === $('sheet')) $('sheet').hidden = true; });
   $('source').addEventListener('change', () => send('source', $('source').value));
   $('awake').addEventListener('click', () => { wantAwake = !wakeLock; keepAwake(wantAwake); });
