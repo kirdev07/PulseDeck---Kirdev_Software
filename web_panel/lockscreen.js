@@ -53,6 +53,9 @@ async function startLockScreen() {
     audio.loop = true;
     audio.preload = 'auto';
     audio.setAttribute('playsinline', '');
+    // The silence is not for speakers or cars: no AirPlay / Bluetooth output choice for it.
+    audio.disableRemotePlayback = true;
+    audio.setAttribute('x-webkit-airplay', 'deny');
     audio.addEventListener('pause', () => {          // paused by the system: back on the next tap
       if (lockScreen.on && prefs.lockScreen) { lockLog('звук остановлен системой'); lockScreen.on = false; waitForTap(); }
     });
