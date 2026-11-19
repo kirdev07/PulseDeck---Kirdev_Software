@@ -257,6 +257,17 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual((await self.client.get(url)).status, 401)
                 self.assertEqual((await self.client.post("/pc/api/v1/pair", json={"code": "1"})).status, 404)
 
+    async def test_phone_reports_are_capped_per_browser_not_per_connection(self):
+        token = await self.paired()
+        with mock.patch.object(service, "LOG_LINES_PER_HOUR", 3),                 self.assertLogs("pulse_pc.services.web_panel", level="INFO") as logs:
+            for _ in range(2):                                  # reconnecting does not reset the cap
+                ws = await self.client.ws_connect(f"/ws?t={token}")
+                for i in range(3):
+                    await ws.send_json({"type": "log", "text": f"report {i}"})
+                await self.messages(ws, 2)
+                await ws.close()
+        self.assertEqual(sum("report" in line for line in logs.output), 3)
+
     async def test_internet_addresses_are_refused(self):
         with mock.patch("modules.local_api.is_private_ip", return_value=False):
             app = service.make_app(pairing=self.pairing)

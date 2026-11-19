@@ -229,6 +229,7 @@ async function pair(code) {
     if (!response.ok || !data.token) throw new Error(data.error || 'ПК отклонил подключение.');
     state.token = data.token;
     store.set(TOKEN_STORE, data.token);
+    if (prefs.lockScreen) startLockScreen();       // it was stopped with the old pairing
     only('panel');
     connect();
   } catch (e) {

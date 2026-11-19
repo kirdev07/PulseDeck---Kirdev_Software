@@ -48,6 +48,7 @@ SESSIONS_SECONDS = 3.0
 ACTIVITY_SECONDS = 2.0
 AUTH_RECHECK_SECONDS = 5.0
 MAX_CLIENTS = 8
+LOG_LINES_PER_HOUR = 40
 CLOSE_REVOKED = 4001
 COMMANDS = {"toggle", "next", "prev", "seek", "volume", "source"}
 SECURITY_HEADERS = {
@@ -91,6 +92,7 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
 
     pairing = pairing or mobile_access.PAIRING
     clients = set()
+    phone_logs = {}                 # device id -> [hour started, lines]: LOG_LINES_PER_HOUR per browser
 
     @web.middleware
     async def guard(request, handler):
@@ -105,6 +107,14 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
         if isinstance(response, web.HTTPException) and not isinstance(response, web.HTTPSuccessful):
             raise response
         return response
+
+    def phone_log_allowed(device):
+        now = time.monotonic()
+        hour = phone_logs.setdefault(device.get("id", "?"), [now, 0])
+        if now - hour[0] > 3600:
+            hour[:] = [now, 0]
+        hour[1] += 1
+        return hour[1] <= LOG_LINES_PER_HOUR
 
     async def static(request):
         name = FILES.get(request.path)
@@ -244,7 +254,7 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
         reader = MetricsReader()
         lock = asyncio.Lock()
         secure = request.secure
-        view = {"control": may_control(device, secure), "source": "", "wake": asyncio.Event(), "logs": 0}
+        view = {"control": may_control(device, secure), "source": "", "wake": asyncio.Event()}
         trusted = bool(secure and device.get("secure"))     # window titles only over HTTPS
 
         def access_message():
@@ -385,10 +395,9 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
                     continue
                 if not isinstance(data, dict):
                     continue
-                if data.get("type") == "log" and view["logs"] < 40:
+                if data.get("type") == "log" and phone_log_allowed(device):
                     # What the phone's browser did (the lock screen player): the phone has no
-                    # console to read, so it reports to the PC log. Short, few per connection.
-                    view["logs"] += 1
+                    # console to read, so it reports to the PC log. Short, a few per hour.
                     text = " ".join(str(data.get("text", "")).split())[:200]
                     logger.info("Веб-панель, %s: %s", device.get("name", "?"), text)
                 elif data.get("type") == "command":

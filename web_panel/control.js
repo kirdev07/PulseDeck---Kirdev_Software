@@ -344,7 +344,18 @@ async function pcDownload(path, name) {
   toast(`Скачиваю «${name}»…`);
   try {
     const response = await pcApi('files/download', { query: { path }, raw: true });
-    const url = URL.createObjectURL(await response.blob());
+    const blob = await response.blob();
+    const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+    const file = typeof File === 'function' ? new File([blob], name, { type: blob.type || 'application/octet-stream' }) : null;
+    if (standalone && file && navigator.canShare && navigator.canShare({ files: [file] })) {
+      // An app from the home screen has no downloads: the share sheet saves it («Сохранить в Файлы»).
+      // It needs a fresh tap, so the file waits for «Сохранить».
+      const shared = (e) => { if (e && e.name !== 'AbortError') toast('Не удалось сохранить файл.'); };
+      await pcDialog(name, el('p', { class: 'muted', text: `Файл получен (${fileSize(blob.size)}).` }),
+        [['Отмена', false, 'ghost'], ['Сохранить', () => { navigator.share({ files: [file] }).catch(shared); return true; }, 'primary']]);
+      return;
+    }
+    const url = URL.createObjectURL(blob);
     const link = el('a', { href: url, download: name });
     document.body.append(link);
     link.click();
