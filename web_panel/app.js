@@ -54,7 +54,7 @@ const DEFAULTS = {
   theme: 'dark', themeByTime: false, dayFrom: '07:00', dayTo: '20:00',
   accent: 'white', clockWeight: 'thin', clockSize: 'm', clock24: true, seconds: false, showDate: true,
   bgDark: 'default', bgLight: 'default', clockColor: 'ink', uiFont: 'system', clockFont: 'system',
-  idle: 'wave', buddy: 'none', motion: true, pulse: false,
+  idle: 'wave', idleSize: 'normal', buddy: 'none', motion: true, pulse: false,
   layout: 'panel', tiles: ['cpu', 'gpu', 'ram', 'net', 'disk'], tileOrder: Object.keys(TILES), disk: '',
   playerAlways: false, showCover: true, showProgress: true, showVolume: true,
   burnIn: true, offlineClock: true,
@@ -114,6 +114,7 @@ function applyPrefs() {
   if (clock) root.style.setProperty('--clock-color', clock); else root.style.removeProperty('--clock-color');
   if (prefs.idle !== 'none' && !IDLE[prefs.idle]) prefs.idle = 'wave';     // an unknown saved choice
   $('wave').dataset.kind = prefs.idle;
+  root.dataset.idleSize = prefs.idleSize;
   root.classList.toggle('no-motion', !prefs.motion);
   root.classList.toggle('pulse', prefs.pulse && prefs.motion);
   root.classList.toggle('hide-cover', !prefs.showCover);
@@ -445,7 +446,16 @@ const IDLE = {
   eq: { name: 'Эквалайзер', h: 90 }, breathe: { name: 'Дыхание', h: 120 }, orbit: { name: 'Орбиты', h: 120 },
   fireflies: { name: 'Светлячки', h: 110 }, ripples: { name: 'Рябь', h: 120 }, aurora: { name: 'Сияние', h: 110 },
   starfield: { name: 'Звёздное небо', h: 120 }, matrix: { name: 'Матрица', h: 110 },
+  spectrum: { name: 'Круговой спектр', h: 150 }, helix: { name: 'ДНК', h: 90 }, lava: { name: 'Лава-лампа', h: 130 },
+  rain: { name: 'Дождь', h: 120 }, fire: { name: 'Огонь', h: 130 }, bubbles: { name: 'Пузырьки', h: 130 },
+  voice: { name: 'Голосовая волна', h: 70 }, galaxy: { name: 'Галактика', h: 140 }, grid: { name: 'Сетка точек', h: 120 },
+  radar: { name: 'Радар', h: 150 }, dots: { name: 'Три точки', h: 60 }, infinity: { name: 'Бесконечность', h: 100 },
+  heart: { name: 'Сердце', h: 120 }, seconds: { name: 'Секундное кольцо', h: 150 }, tunnel: { name: 'Тоннель', h: 140 },
+  ocean: { name: 'Океан', h: 110 }, lissajous: { name: 'Лиссажу', h: 120 }, polygon: { name: 'Кристалл', h: 150 },
+  confetti: { name: 'Конфетти', h: 130 },
 };
+// «Размер анимации»: about the player's width, almost the whole width, or all the free space.
+const IDLE_SIZES = { normal: 'Обычный', wide: 'Широкий', full: 'Во весь экран' };
 const rand = (seed) => { const x = Math.sin(seed * 9301 + 49297) * 233280; return x - Math.floor(x); };
 const FLIES = Array.from({ length: 22 }, (_, i) => ({ x: rand(i), y: rand(i + 50), s: 0.4 + rand(i + 99), p: rand(i + 7) * 6.28 }));
 const STARS = Array.from({ length: 90 }, (_, i) => ({ x: rand(i) * 2 - 1, y: rand(i + 200) * 2 - 1, z: rand(i + 400) }));
@@ -596,11 +606,218 @@ function drawIdle(kind, c, w, h, t, ink) {
       }
     }
     c.globalAlpha = 1;
+  } else {
+    drawMore(kind, c, w, h, t, ink);
+  }
+}
+
+const BUBBLES = Array.from({ length: 24 }, (_, i) => ({ x: rand(i + 900), r: 2 + rand(i + 950) * 7, v: 0.3 + rand(i + 990), o: rand(i + 1030) }));
+const CONFETTI = Array.from({ length: 46 }, (_, i) => ({ x: rand(i + 1100), v: 0.4 + rand(i + 1150), o: rand(i + 1200),
+                                                         s: 3 + rand(i + 1250) * 4, spin: rand(i + 1300) * 6 }));
+const FLAMES = Array.from({ length: 40 }, (_, i) => ({ x: rand(i + 1400), v: 0.6 + rand(i + 1450), o: rand(i + 1500), r: 4 + rand(i + 1550) * 9 }));
+
+// The second set of idle animations (12–30).
+function drawMore(kind, c, w, h, t, ink) {
+  const mid = h / 2, cx = w / 2, R = Math.min(w, h) / 2;
+  if (kind === 'spectrum') {             // radial bars around a circle
+    const n = 64, r0 = R * 0.42;
+    c.lineWidth = Math.max(1.5, (Math.PI * 2 * r0) / n * 0.5);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + t / 6000;
+      const v = 0.15 + 0.85 * Math.abs(Math.sin(t / 420 + i * 0.55) * Math.sin(t / 1700 + i * 0.13));
+      const r1 = r0 + v * R * 0.5;
+      c.globalAlpha = 0.45 + 0.55 * v;
+      c.beginPath(); c.moveTo(cx + Math.cos(a) * r0, mid + Math.sin(a) * r0); c.lineTo(cx + Math.cos(a) * r1, mid + Math.sin(a) * r1); c.stroke();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'helix') {         // DNA: two strands with rungs, turning
+    for (let x = 0; x <= w; x += 10) {
+      const a = x / 34 + t / 700, y1 = mid + Math.sin(a) * h * 0.36, y2 = mid - Math.sin(a) * h * 0.36;
+      const front = Math.cos(a) > 0;
+      c.globalAlpha = 0.25; c.lineWidth = 1;
+      c.beginPath(); c.moveTo(x, y1); c.lineTo(x, y2); c.stroke();
+      c.globalAlpha = front ? 1 : 0.45; c.beginPath(); c.arc(x, y1, front ? 3 : 2, 0, Math.PI * 2); c.fill();
+      c.globalAlpha = front ? 0.45 : 1; c.beginPath(); c.arc(x, y2, front ? 2 : 3, 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'lava') {          // lava lamp: soft blobs that drift and melt together
+    c.filter = 'blur(10px)';
+    for (let i = 0; i < 6; i++) {
+      const x = cx + Math.sin(t / (3100 + i * 530) + i * 2) * w * 0.36;
+      const y = mid + Math.cos(t / (2700 + i * 410) + i) * h * 0.32;
+      c.globalAlpha = 0.55;
+      c.beginPath(); c.arc(x, y, R * (0.28 + 0.1 * Math.sin(t / 1500 + i)), 0, Math.PI * 2); c.fill();
+    }
+    c.filter = 'none'; c.globalAlpha = 1;
+  } else if (kind === 'rain') {          // thin slanted rain
+    c.lineWidth = 1.2;
+    for (const [i, d] of DROPS.entries()) {
+      const y = ((t / 1000 * (160 + d.v * 140) + d.o * h * 4) % (h + 30)) - 15;
+      const x = (d.x * w + y * 0.18 + i * 7) % w;
+      c.globalAlpha = 0.35 + 0.5 * d.v;
+      c.beginPath(); c.moveTo(x, y); c.lineTo(x - 3, y - 12); c.stroke();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'fire') {          // flame particles rising and fading
+    for (const f of FLAMES) {
+      const u = ((t / 1000 * f.v * 0.6) + f.o) % 1;
+      const x = cx + (f.x - 0.5) * w * 0.5 * (1 - u * 0.7) + Math.sin(t / 300 + f.o * 9) * 4;
+      const y = h - u * h * 0.95;
+      c.globalAlpha = (1 - u) * 0.75;
+      c.beginPath(); c.arc(x, y, f.r * (1 - u * 0.8), 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'bubbles') {       // bubbles rising with a wobble
+    c.lineWidth = 1.2;
+    for (const b of BUBBLES) {
+      const u = ((t / 1000 * b.v * 0.12) + b.o) % 1;
+      const x = b.x * w + Math.sin(t / 700 + b.o * 20) * 6, y = h + b.r - u * (h + b.r * 2);
+      c.globalAlpha = 0.25 + 0.6 * Math.sin(u * Math.PI);
+      c.beginPath(); c.arc(x, y, b.r, 0, Math.PI * 2); c.stroke();
+      c.beginPath(); c.arc(x - b.r * 0.35, y - b.r * 0.35, Math.max(0.6, b.r * 0.18), 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'voice') {         // mirrored waveform, like a voice message
+    const n = Math.floor(w / 6);
+    for (let i = 0; i < n; i++) {
+      const x = i * 6 + 2;
+      const env = Math.sin((i / n) * Math.PI);
+      const v = (0.15 + 0.85 * Math.abs(Math.sin(i * 0.9 + t / 260) * Math.sin(i * 0.23 - t / 900))) * env;
+      c.globalAlpha = 0.5 + 0.5 * env;
+      c.fillRect(x, mid - v * h * 0.45, 3, Math.max(2, v * h * 0.9));
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'galaxy') {        // a rotating spiral of dots
+    for (let i = 0; i < 260; i++) {
+      const arm = i % 2, k = i / 260;
+      const a = k * Math.PI * 5 + arm * Math.PI + t / 3000;
+      const r = k * R * 0.95;
+      c.globalAlpha = 0.25 + 0.75 * (1 - k);
+      c.beginPath(); c.arc(cx + Math.cos(a) * r * (w / h > 2 ? 1.8 : 1), mid + Math.sin(a) * r * 0.6, 0.6 + (1 - k) * 1.6, 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'grid') {          // a grid of dots with a travelling ripple
+    const step = 16;
+    for (let x = step / 2; x < w; x += step) {
+      for (let y = step / 2; y < h; y += step) {
+        const d = Math.hypot(x - cx, (y - mid) * 1.6);
+        const v = 0.5 + 0.5 * Math.sin(d / 18 - t / 400);
+        c.globalAlpha = 0.15 + 0.75 * v;
+        c.beginPath(); c.arc(x, y, 0.8 + v * 1.6, 0, Math.PI * 2); c.fill();
+      }
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'radar') {         // rings and a sweeping beam
+    c.lineWidth = 1;
+    for (let i = 1; i <= 3; i++) { c.globalAlpha = 0.25; c.beginPath(); c.arc(cx, mid, R * 0.9 * i / 3, 0, Math.PI * 2); c.stroke(); }
+    const a = t / 900;
+    const beam = c.createConicGradient ? c.createConicGradient(a - 1.2, cx, mid) : null;
+    if (beam) {
+      beam.addColorStop(0, rgba(ink, 0)); beam.addColorStop(0.19, rgba(ink, 0.45)); beam.addColorStop(0.191, rgba(ink, 0));
+      c.globalAlpha = 1; c.fillStyle = beam;
+      c.beginPath(); c.arc(cx, mid, R * 0.9, 0, Math.PI * 2); c.fill();
+      c.fillStyle = ink;
+    }
+    c.globalAlpha = 1; c.lineWidth = 1.5;
+    c.beginPath(); c.moveTo(cx, mid); c.lineTo(cx + Math.cos(a) * R * 0.9, mid + Math.sin(a) * R * 0.9); c.stroke();
+  } else if (kind === 'dots') {          // three dots bouncing, the «typing» loader
+    for (let i = 0; i < 3; i++) {
+      const v = Math.max(0, Math.sin(t / 260 - i * 0.7));
+      c.globalAlpha = 0.4 + 0.6 * v;
+      c.beginPath(); c.arc(cx + (i - 1) * 26, mid - v * h * 0.22, 7, 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'infinity') {      // a glowing tracer running along ∞
+    const ax = Math.min(w * 0.4, h * 1.4), ay = h * 0.36;
+    c.lineWidth = 1; c.globalAlpha = 0.2; c.beginPath();
+    for (let i = 0; i <= 120; i++) { const s = (i / 120) * Math.PI * 2; const x = cx + ax * Math.sin(s), y = mid + ay * Math.sin(s) * Math.cos(s) * 2;
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); }
+    c.stroke();
+    c.shadowColor = ink; c.shadowBlur = 10;
+    for (let k = 0; k < 18; k++) {
+      const s = t / 900 - k * 0.06;
+      c.globalAlpha = 1 - k / 18;
+      c.beginPath(); c.arc(cx + ax * Math.sin(s), mid + ay * Math.sin(s) * Math.cos(s) * 2, 3.2 - k * 0.15, 0, Math.PI * 2); c.fill();
+    }
+    c.shadowBlur = 0; c.globalAlpha = 1;
+  } else if (kind === 'heart') {         // a heart beating twice a second… then resting
+    const beat = t % 1200, k = beat < 160 ? 1 + 0.12 * Math.sin(beat / 160 * Math.PI) : beat < 360 ? 1 + 0.07 * Math.sin((beat - 160) / 200 * Math.PI) : 1;
+    const s = (h * 0.032) * k;
+    c.save(); c.translate(cx, mid + h * 0.04); c.scale(s, s);
+    c.beginPath();
+    for (let i = 0; i <= 100; i++) { const a = (i / 100) * Math.PI * 2;
+      const x = 16 * Math.sin(a) ** 3, y = -(13 * Math.cos(a) - 5 * Math.cos(2 * a) - 2 * Math.cos(3 * a) - Math.cos(4 * a));
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); }
+    c.restore();
+    c.shadowColor = ink; c.shadowBlur = 12 * (k - 0.9) * 5;
+    c.lineWidth = 2; c.stroke();
+    c.globalAlpha = 0.15 + (k - 1) * 3; c.fill();
+    c.shadowBlur = 0; c.globalAlpha = 1;
+  } else if (kind === 'seconds') {       // the real seconds of the phone's clock as a ring
+    const now = new Date(), sec = now.getSeconds() + now.getMilliseconds() / 1000;
+    const r = R * 0.8;
+    c.lineWidth = 3; c.globalAlpha = 0.15; c.beginPath(); c.arc(cx, mid, r, 0, Math.PI * 2); c.stroke();
+    c.globalAlpha = 1; c.beginPath(); c.arc(cx, mid, r, -Math.PI / 2, -Math.PI / 2 + (sec / 60) * Math.PI * 2); c.stroke();
+    for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; c.globalAlpha = 0.35;
+      c.beginPath(); c.arc(cx + Math.cos(a) * (r - 9), mid + Math.sin(a) * (r - 9), 1.2, 0, Math.PI * 2); c.fill(); }
+    c.globalAlpha = 1;
+    c.font = `${Math.round(r * 0.5)}px ui-monospace, Menlo, monospace`; c.textAlign = 'center'; c.textBaseline = 'middle';
+    c.fillText(String(Math.floor(sec)).padStart(2, '0'), cx, mid + 1);
+    c.textBaseline = 'alphabetic';
+  } else if (kind === 'tunnel') {        // squares flying towards the viewer
+    c.lineWidth = 1.2;
+    for (let i = 0; i < 9; i++) {
+      const z = ((i / 9) + t / 4000) % 1, s = z * z;
+      c.globalAlpha = Math.min(1, z * 1.6) * (1 - z * 0.3);
+      const sw = s * w * 0.95, sh = s * h * 0.95;
+      c.save(); c.translate(cx, mid); c.rotate(z * 0.8);
+      c.strokeRect(-sw / 2, -sh / 2, sw, sh); c.restore();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'ocean') {         // filled waves, one behind another
+    for (let layer = 0; layer < 3; layer++) {
+      c.globalAlpha = 0.22 + layer * 0.22;
+      c.beginPath(); c.moveTo(0, h);
+      for (let x = 0; x <= w; x += 4) {
+        c.lineTo(x, h * (0.45 + layer * 0.15) + Math.sin(x / (60 - layer * 12) + t / (1400 - layer * 300) + layer * 2) * h * 0.08);
+      }
+      c.lineTo(w, h); c.closePath(); c.fill();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'lissajous') {     // a slowly morphing Lissajous figure
+    const a = 3, b = 2, delta = t / 2500;
+    c.lineWidth = 1.4; c.beginPath();
+    for (let i = 0; i <= 400; i++) { const s = (i / 400) * Math.PI * 2;
+      const x = cx + Math.sin(a * s + delta) * Math.min(w * 0.42, h * 1.2), y = mid + Math.sin(b * s) * h * 0.42;
+      if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); }
+    c.globalAlpha = 0.85; c.stroke(); c.globalAlpha = 1;
+  } else if (kind === 'polygon') {       // a crystal: nested polygons turning against each other
+    c.lineWidth = 1.3;
+    for (let ring = 0; ring < 4; ring++) {
+      const sides = 6, r = R * (0.85 - ring * 0.18), rot = (ring % 2 ? -1 : 1) * t / (3000 + ring * 900);
+      c.globalAlpha = 0.9 - ring * 0.18;
+      c.beginPath();
+      for (let i = 0; i <= sides; i++) { const ang = rot + (i / sides) * Math.PI * 2;
+        const x = cx + Math.cos(ang) * r, y = mid + Math.sin(ang) * r; if (i === 0) c.moveTo(x, y); else c.lineTo(x, y); }
+      c.stroke();
+    }
+    c.globalAlpha = 1;
+  } else if (kind === 'confetti') {      // slow confetti in the accent colour and its shades
+    for (const p of CONFETTI) {
+      const y = ((t / 1000 * (25 + p.v * 30)) + p.o * h * 3) % (h + 20) - 10;
+      const x = p.x * w + Math.sin(t / 900 + p.o * 10) * 10;
+      c.save(); c.translate(x, y); c.rotate(t / 600 * p.spin);
+      c.globalAlpha = 0.45 + 0.55 * p.v;
+      c.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
+      c.restore();
+    }
+    c.globalAlpha = 1;
   }
 }
 
 // Animations that fill the whole canvas fade out at its edges instead of ending in a hard box.
-const SOFT_EDGES = new Set(['waves', 'aurora', 'fireflies', 'starfield', 'matrix']);
+const SOFT_EDGES = new Set(['waves', 'aurora', 'fireflies', 'starfield', 'matrix', 'rain', 'bubbles', 'grid', 'ocean',
+                            'confetti', 'fire', 'helix', 'voice', 'lava']);
 function softEdges(c, w, h) {
   c.save();
   c.globalCompositeOperation = 'destination-in';
@@ -617,6 +834,23 @@ function softEdges(c, w, h) {
   c.restore();
 }
 
+function idleBox(kind) {
+  const free = canvasRoom();
+  if (prefs.idleSize === 'full') return [Math.max(120, free.width), Math.max(60, free.height)];
+  const width = Math.round(Math.min(prefs.idleSize === 'wide' ? 1100 : 480,
+                                    window.innerWidth * (prefs.idleSize === 'wide' ? 0.92 : 0.8)));
+  const tall = prefs.idleSize === 'wide' ? 1.35 : 1;
+  return [width, Math.round(Math.min(IDLE[kind].h * tall, free.height || window.innerHeight * 0.22))];
+}
+// The free space between the clock and the tiles (the canvas itself does not count).
+function canvasRoom() {
+  const center = $('wave').parentElement;
+  const box = center.getBoundingClientRect();
+  let used = 0;
+  for (const child of center.children) if (child !== $('wave') && !child.hidden) used += child.getBoundingClientRect().height;
+  return { width: Math.round(box.width), height: Math.round(Math.max(0, box.height - used - 16)) };
+}
+
 function startIdle() {
   const canvas = $('wave');
   const context = canvas.getContext('2d');
@@ -626,8 +860,7 @@ function startIdle() {
     if (!canvas.hidden && !document.hidden && IDLE[kind] && now - last > 33) {     // ~30 fps, as the panel
       last = now;
       const ratio = window.devicePixelRatio || 1;
-      const width = Math.round(Math.min(480, window.innerWidth * 0.8));             // about the player's width
-      const height = Math.min(IDLE[kind].h, Math.round(window.innerHeight * 0.22));
+      const [width, height] = idleBox(kind);
       if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
         canvas.width = width * ratio; canvas.height = height * ratio;
         canvas.style.width = `${width}px`; canvas.style.height = `${height}px`;
@@ -926,6 +1159,7 @@ function buildSettings() {
 
     el('h3', { text: 'Анимации' }),
     pref('Когда ничего не играет', chips('idle', [...Object.entries(IDLE).map(([k, v]) => [k, v.name]), ['none', 'Нет']])),
+    prefs.idle !== 'none' ? pref('Размер анимации', chips('idleSize', Object.entries(IDLE_SIZES))) : null,
     pref('Компаньон', chips('buddy', [['none', 'Нет'], ['cat', '🐱 Котик с настроением'], ['walk', '🐈 Котик гуляет'],
       ['hearts', '💖 Сердечки'], ['snow', '❄️ Снегопад'], ['sparkle', '✨ Звёздочки']])),
     prefs.buddy === 'cat' ? el('div', { class: 'note-text',

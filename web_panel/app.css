@@ -297,7 +297,9 @@ html[data-clock-font="hand"] { --clock-font: "Snell Roundhand", "Segoe Script", 
 html[data-clock-font="mono"] .time { letter-spacing: -.06em; }
 
 /* idle animation: the canvas size is set by app.js (about the player's width) */
-.wave { width: auto; height: auto; max-width: 100%; }
+.wave { width: auto; height: auto; max-width: 100%; flex: none; }
+/* «Во весь экран»: the centre grows to the free space and the canvas fills it */
+html[data-idle-size="full"] .center { align-self: stretch; }
 
 /* ----- emoji companion (Настройки → Компаньон) ----- */
 .buddy { position: fixed; z-index: 2; pointer-events: none; font-size: 34px; line-height: 1;
