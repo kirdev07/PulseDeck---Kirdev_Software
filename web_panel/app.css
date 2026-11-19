@@ -384,10 +384,20 @@ html[data-idle-size="full"] .center { align-self: stretch; }
             white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .activity b { color: var(--text2); font-weight: 500; }
 
-/* ----- live sound under the player (real levels of the PC) ----- */
-.live { width: 100%; max-width: 560px; height: 34px; display: block; }
-html[data-layout="music"] .live { max-width: 720px; }
-.player { transition: box-shadow .08s linear; }
+/* ----- «играет»: bouncing bars before the track title while it plays (as on Samsung) ----- */
+.title-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.title-row .title { min-width: 0; }
+.eq { display: none; flex: none; align-items: flex-end; gap: 2px; height: 14px; }
+html.eq-bars .player.playing .eq { display: inline-flex; }
+.eq i { width: 3px; height: 100%; border-radius: 2px; background: var(--accent); transform-origin: bottom;
+        animation: eq 1s ease-in-out infinite; }
+.eq i:nth-child(2) { animation-duration: .8s; animation-delay: -.3s; }
+.eq i:nth-child(3) { animation-duration: 1.15s; animation-delay: -.6s; }
+.eq i:nth-child(4) { animation-duration: .9s; animation-delay: -.15s; }
+@keyframes eq { 0%, 100% { transform: scaleY(.25); } 50% { transform: scaleY(1); } }
+html.no-motion .eq i { transform: scaleY(.6); }
+html[data-layout="music"] .eq { height: 20px; }
+html[data-layout="music"] .eq i { width: 4px; }
 
 /* ----- colours from the cover: a soft glow, or the blurred cover behind everything ----- */
 html.cover-glow body { background: radial-gradient(120% 80% at 50% 40%, color-mix(in srgb, var(--cover, var(--bg)) 22%, var(--bg)) 0%, var(--bg) 70%) fixed; }
@@ -400,10 +410,9 @@ body:has(.backdrop:not([hidden])) .player { background: color-mix(in srgb, var(-
 /* gestures: no text selection or page bounce while swiping the player */
 html.gestures .player { touch-action: none; user-select: none; -webkit-user-select: none; }
 html.gestures .clock { cursor: pointer; }
-/* Landscape: «Сейчас на ПК» on the date's line and a slimmer live strip — everything fits the screen. */
+/* Landscape: «Сейчас на ПК» on the date's line — everything fits the screen. */
 @media (orientation: landscape) {
   .date, .activity:not([hidden]) { display: inline; }
   .activity { margin: 0; font-size: 14px; max-width: none; }
   .activity::before { content: "  ·  "; color: var(--text3); }
-  .live { height: 18px; }
 }

@@ -59,7 +59,7 @@ const DEFAULTS = {
   layout: 'panel', tiles: ['cpu', 'gpu', 'ram', 'net', 'disk'], tileOrder: Object.keys(TILES), disk: '',
   playerAlways: false, showCover: true, showProgress: true, showVolume: true, sparks: true, tileRows: 'wrap',
   alerts: true, notify: false, push: false, alertOffline: true,
-  liveSound: true, liveStyle: 'wave', coverColors: true, coverBackdrop: false, gestures: true, showActivity: true,
+  nowPlaying: true, coverColors: true, coverBackdrop: false, gestures: true, showActivity: true,
   limits: { cpu: 90, gpu: 90, ram: 90, vram: 95, disk: 10, battery: 20 },
   burnIn: true, offlineClock: true,
 };
@@ -127,8 +127,8 @@ function applyPrefs() {
   root.classList.toggle('hide-progress', !prefs.showProgress);
   root.classList.toggle('hide-volume', !prefs.showVolume);
   root.classList.toggle('gestures', prefs.gestures);
+  root.classList.toggle('eq-bars', prefs.nowPlaying);
   applyCoverColor();
-  subscribeLevels();
   if (state.activity) showActivity(state.activity);
   $('date').hidden = !prefs.showDate;
   const background = getComputedStyle(root).getPropertyValue('--bg').trim() || '#000000';
@@ -643,7 +643,6 @@ function showMedia(msg) {
   tickProgress();
   if (prefs.tiles.includes('volume')) renderMetrics();
   if (!coverKey) { coverColor = ''; applyCoverColor(); }
-  subscribeLevels();
 }
 
 function showSessions(items) {
@@ -1150,66 +1149,6 @@ function startIdle() {
   requestAnimationFrame(frame);
 }
 
-// ----- live sound: real left/right peak levels of the PC (Windows peak meter), ~20 per second -----
-let levelsWanted = null;
-const live = { l: 0, r: 0, peakL: 0, peakR: 0, history: [], at: 0 };
-function subscribeLevels() {
-  const want = prefs.liveSound && !!state.media && state.media.status === 'playing' && !document.hidden;
-  $('live').hidden = !want || prefs.liveStyle === 'glow';
-  if (!want) $('player').style.boxShadow = '';
-  if (want === levelsWanted || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-  levelsWanted = want;
-  state.ws.send(JSON.stringify({ type: 'subscribe', levels: want }));
-}
-// Loudness feels logarithmic: a square root makes quiet music still move.
-const loud = (v) => Math.min(1, Math.sqrt(Math.max(0, v || 0)) * 1.15);
-function onLevel(l, r) {
-  const a = loud(l), b = loud(r);
-  live.l = a > live.l ? a : live.l * 0.82 + a * 0.18;          // fast attack, slow release
-  live.r = b > live.r ? b : live.r * 0.82 + b * 0.18;
-  live.peakL = Math.max(live.l, live.peakL - 0.012);
-  live.peakR = Math.max(live.r, live.peakR - 0.012);
-  live.history.push((live.l + live.r) / 2);
-  if (live.history.length > 160) live.history.shift();
-  const glow = Math.round(6 + 26 * Math.max(live.l, live.r));
-  const tone = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
-  $('player').style.boxShadow = `0 0 ${glow}px ${Math.round(glow / 4)}px ${rgba(tone, 0.12 + 0.3 * Math.max(live.l, live.r))}`;
-  if (!$('live').hidden) drawLive();
-}
-function drawLive() {
-  const canvas = $('live');
-  const ratio = window.devicePixelRatio || 1;
-  const width = canvas.clientWidth, height = canvas.clientHeight;
-  if (!width) return;
-  if (canvas.width !== Math.round(width * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); }
-  const c = canvas.getContext('2d');
-  c.setTransform(ratio, 0, 0, ratio, 0, 0);
-  c.clearRect(0, 0, width, height);
-  const ink = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
-  c.fillStyle = ink;
-  const mid = height / 2;
-  if (prefs.liveStyle === 'meter') {              // stereo meter: L above, R below, with peak marks
-    const bars = Math.floor(width / 7);
-    [[live.l, live.peakL, 0], [live.r, live.peakR, mid + 2]].forEach(([value, peak, y]) => {
-      for (let i = 0; i < bars; i++) {
-        const lit = i / bars < value;
-        c.globalAlpha = lit ? 0.35 + 0.65 * (i / bars) : 0.1;
-        c.fillRect(i * 7, y, 5, mid - 3);
-      }
-      c.globalAlpha = 1;
-      c.fillRect(Math.min(width - 3, Math.floor(peak * bars) * 7), y, 3, mid - 3);
-    });
-  } else {                                         // scrolling loudness, mirrored (the real waveform of the song)
-    const data = live.history, step = width / 160;
-    for (let i = 0; i < data.length; i++) {
-      const v = data[i], x = width - (data.length - i) * step;
-      c.globalAlpha = 0.3 + 0.7 * (i / data.length);
-      c.fillRect(x, mid - v * (mid - 1), Math.max(1, step - 1), Math.max(1, v * (height - 2)));
-    }
-  }
-  c.globalAlpha = 1;
-}
-
 // ----- colours from the cover: the accent and a soft glow follow the playing track -----
 let coverColor = '';
 function takeCoverColor(img) {
@@ -1385,8 +1324,6 @@ function connect() {
         }
       }
       $('pcname').textContent = msg.name || 'ПК';
-      levelsWanted = null;          // a fresh socket: tell the PC again what we want
-      subscribeLevels();
       only('panel');
       setStatus(true);
     } else if (msg.type === 'access') {
@@ -1399,8 +1336,6 @@ function connect() {
       showMedia(msg);
     } else if (msg.type === 'sessions') {
       showSessions(msg.items || []);
-    } else if (msg.type === 'level') {
-      onLevel(msg.l, msg.r);
     } else if (msg.type === 'activity') {
       showActivity(msg);
     } else if (msg.type === 'error') {
@@ -1604,10 +1539,7 @@ function buildSettings() {
     el('h3', { text: 'Уведомления' }),
     notifyRow(),
 
-    el('h3', { text: 'Живой звук и цвета' }),
-    toggle('liveSound', 'Живой звук ПК под плеером'),
-    prefs.liveSound ? pref('Вид', chips('liveStyle', [['wave', 'Волна громкости'], ['meter', 'Стерео-индикатор'], ['glow', 'Только свечение']])) : null,
-    prefs.liveSound ? el('div', { class: 'note-text', text: 'Настоящий уровень звука с ПК (левый и правый канал), пока играет музыка. Карточка плеера светится в такт.' }) : null,
+    el('h3', { text: 'Цвета из обложки' }),
     toggle('coverColors', 'Цвет акцента из обложки трека'),
     toggle('coverBackdrop', 'Размытая обложка на фоне'),
 
@@ -1621,6 +1553,7 @@ function buildSettings() {
 
     el('h3', { text: 'Плеер' }),
     toggle('playerAlways', 'Показывать, даже когда ничего не играет'),
+    toggle('nowPlaying', 'Полоски «играет» рядом с названием трека'),
     toggle('showCover', 'Обложка'),
     toggle('showProgress', 'Полоса времени'),
     toggle('showVolume', 'Громкость ПК'),
@@ -1708,7 +1641,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   startIdle();
   startBurnIn();
   startGestures();
-  document.addEventListener('visibilitychange', subscribeLevels);
   startBattery();
   showSecureInfo();
 
