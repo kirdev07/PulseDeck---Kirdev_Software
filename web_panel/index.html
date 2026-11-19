@@ -29,6 +29,9 @@
     <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></symbol>
     <symbol id="i-lock" viewBox="0 0 24 24"><path d="M7 11h10a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 17 21H7a1.5 1.5 0 0 1-1.5-1.5v-7A1.5 1.5 0 0 1 7 11z"/><path d="M8.5 11V8a3.5 3.5 0 0 1 7 0v3"/></symbol>
     <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24"><path d="M6 14.5l6-6l6 6"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24"><path d="M6 9.5l6 6l6-6"/></symbol>
+    <symbol id="i-power" viewBox="0 0 24 24"><path d="M12 3v8"/><path d="M6.5 6.5a8 8 0 1 0 11 0"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24" class="fill"><path d="M8 5v14l11-7z"/></symbol>
     <symbol id="i-pause" viewBox="0 0 24 24" class="fill"><path d="M7 5h3.5v14H7zM13.5 5H17v14h-3.5z"/></symbol>
     <symbol id="i-next" viewBox="0 0 24 24" class="fill"><path d="M5 5v14l10-7z"/><path d="M16.5 5h2v14h-2z"/></symbol>
@@ -124,13 +127,8 @@
       <div class="hint" id="accesshint" hidden></div>
     </section>
 
-    <footer class="metrics">
-      <div class="metric" id="m-cpu"><svg class="i"><use href="#i-cpu"/></svg><div class="body"><div class="head"><span>CPU</span><b class="num">—</b></div><div class="sub">—</div><div class="bar"><i></i></div></div></div>
-      <div class="metric" id="m-gpu"><svg class="i"><use href="#i-gpu"/></svg><div class="body"><div class="head"><span>GPU</span><b class="num">—</b></div><div class="sub">—</div><div class="bar"><i></i></div></div></div>
-      <div class="metric" id="m-ram"><svg class="i"><use href="#i-ram"/></svg><div class="body"><div class="head"><span>RAM</span><b class="num">—</b></div><div class="sub">—</div><div class="bar"><i></i></div></div></div>
-      <div class="metric" id="m-net"><svg class="i"><use href="#i-network"/></svg><div class="body"><div class="head"><span>Сеть</span><b class="num" id="down">—</b></div><div class="sub" id="up">—</div><div class="bar hidden-bar"><i></i></div></div></div>
-      <div class="metric" id="m-disk"><svg class="i"><use href="#i-disk"/></svg><div class="body"><div class="head"><span id="diskname">Диск</span><b class="num" id="diskfree">—</b></div><div class="sub" id="disksub">—</div><div class="bar"><i id="diskbar"></i></div></div></div>
-    </footer>
+    <!-- Плитки собираются скриптом по настройке «Плитки» (выбор и порядок). -->
+    <footer class="metrics" id="metrics"></footer>
   </main>
 
   <!-- Настройки (шестерёнка) -->
@@ -140,13 +138,8 @@
         <h2 id="sheet-title">Настройки</h2>
         <button type="button" id="close-settings" class="icon-button" aria-label="Закрыть"><svg class="i"><use href="#i-close"/></svg></button>
       </div>
-      <div class="field">
-        <span class="label">Тема</span>
-        <div class="chips" id="themes">
-          <button type="button" data-theme="dark">Тёмная</button>
-          <button type="button" data-theme="light">Белая</button>
-        </div>
-      </div>
+      <!-- Разделы кастомизации строит app.js (buildSettings). -->
+      <div id="prefs" class="prefs"></div>
       <label class="field">
         <span class="label">Источник музыки</span>
         <select id="source" aria-label="Что показывать и чем управлять"><option value="">Автоматически</option></select>

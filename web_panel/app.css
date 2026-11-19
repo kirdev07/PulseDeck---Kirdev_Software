@@ -2,6 +2,20 @@
    Sizes are the panel's dp taken as CSS px (a phone browser has ≈1 px per dp):
    DashboardScreen padding 28/14, ClockBlock 128 thin, CompactPlayer ≤560 wide, MetricsBar 11/9.
    Themes: «Тёмная» and «Белая», as the panel. Landscape = the panel; portrait = the same parts stacked, same small sizes. */
+/* Accent (Настройки → Цвет): bars, sliders, the play ring, the status dot. «Белый» = the ink. */
+:root { --clock: 128px; --clock-weight: 100; }
+html { --accent: var(--text); --accent-ring: var(--text2); }
+html[data-accent="blue"] { --accent: #4c8dff; --accent-ring: #4c8dff; }
+html[data-accent="green"] { --accent: #34c77b; --accent-ring: #34c77b; }
+html[data-accent="purple"] { --accent: #a679ff; --accent-ring: #a679ff; }
+html[data-accent="orange"] { --accent: #ff9f43; --accent-ring: #ff9f43; }
+html[data-accent="red"] { --accent: #ff5c5c; --accent-ring: #ff5c5c; }
+html[data-accent="pink"] { --accent: #ff6fb5; --accent-ring: #ff6fb5; }
+html[data-clock-size="s"] { --clock: 96px; }
+html[data-clock-size="l"] { --clock: 168px; }
+html[data-clock-weight="regular"] { --clock-weight: 300; }
+html[data-clock-weight="bold"] { --clock-weight: 600; }
+
 :root, html[data-theme="dark"] {
   --bg: #000000; --surface: #101010; --surface2: #191919; --border: #242424; --track: #292929;
   --text: #ffffff; --text2: #aaaaaa; --text3: #888888; --disabled: #454545;
@@ -66,7 +80,7 @@ a.button { display: block; text-align: center; text-decoration: none; color: var
               font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .state .i { width: 12px; height: 12px; vertical-align: -1px; }
 .dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--text3); flex: none; }
-.dot.on { background: var(--text); border-color: var(--text); }
+.dot.on { background: var(--accent); border-color: var(--accent); }
 .status-right { display: flex; align-items: center; gap: 4px; }
 .battery { display: flex; align-items: center; gap: 5px; color: var(--text2); font-size: 11px; }
 .battery .i { width: 22px; height: 22px; stroke-width: 1.4; }
@@ -76,7 +90,7 @@ a.button { display: block; text-align: center; text-decoration: none; color: var
 
 /* ClockBlock: 128 thin, −0.04em; date 17 light */
 .clock { text-align: center; margin-top: 6px; }
-.time { font-size: min(128px, 30vh); font-weight: 100; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.time { font-size: min(var(--clock), 30vh); font-weight: var(--clock-weight); line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .date { font-size: 17px; font-weight: 300; letter-spacing: .5px; color: var(--text2); margin-top: 2px; }
 .date::first-letter { text-transform: uppercase; }
 
@@ -105,7 +119,7 @@ a.button { display: block; text-align: center; text-decoration: none; color: var
 .controls button { width: 42px; height: 42px; background: none; color: var(--text); padding: 0; border-radius: 50%;
                    display: grid; place-items: center; }
 .controls button .i { width: 24px; height: 24px; }
-.controls button.round { width: 50px; height: 50px; border: 1.4px solid var(--text2); }
+.controls button.round { width: 50px; height: 50px; border: 1.4px solid var(--accent-ring); }
 .controls button.round .i { width: 22px; height: 22px; }
 .controls button:disabled { color: var(--disabled); }
 .controls button.round:disabled { border-color: var(--disabled); }
@@ -116,10 +130,10 @@ a.button { display: block; text-align: center; text-decoration: none; color: var
 input[type=range] { -webkit-appearance: none; appearance: none; width: 100%; height: 24px; background: transparent; margin: 0; }
 input[type=range]::-webkit-slider-runnable-track { height: 3px; border-radius: 2px; background: var(--track); }
 input[type=range]::-moz-range-track { height: 3px; border-radius: 2px; background: var(--track); }
-input[type=range]::-moz-range-progress { height: 3px; border-radius: 2px; background: var(--text); }
+input[type=range]::-moz-range-progress { height: 3px; border-radius: 2px; background: var(--accent); }
 input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; margin-top: -4.5px;
-                                          border-radius: 50%; background: var(--text); }
-input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--text); }
+                                          border-radius: 50%; background: var(--accent); }
+input[type=range]::-moz-range-thumb { width: 12px; height: 12px; border: 0; border-radius: 50%; background: var(--accent); }
 input[type=range]:disabled::-webkit-slider-thumb { width: 0; height: 0; margin-top: 0; }
 input[type=range]:disabled::-moz-range-thumb { width: 0; height: 0; }
 
@@ -136,7 +150,7 @@ input[type=range]:disabled::-moz-range-thumb { width: 0; height: 0; }
 .metric .head .num { font-weight: 400; color: var(--text); font-size: 11px; }
 .metric .sub { font-size: 9px; color: var(--text3); margin: 1px 0 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bar { height: 3px; border-radius: 2px; background: var(--track); overflow: hidden; }
-.bar i { display: block; height: 100%; width: 0; background: var(--text); border-radius: 2px; transition: width .6s ease; }
+.bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width .6s ease; }
 .hidden-bar { visibility: hidden; }
 
 /* Landscape: like the panel, no hint line — the same text is in Настройки → Подключение. */
@@ -146,7 +160,7 @@ input[type=range]:disabled::-moz-range-thumb { width: 0; height: 0; }
 @media (orientation: portrait) {
   body { padding-left: max(18px, env(safe-area-inset-left)); padding-right: max(18px, env(safe-area-inset-right)); }
   .clock { margin-top: 44px; }
-  .time { font-size: min(96px, 24vw); }
+  .time { font-size: min(calc(var(--clock) * .75), 24vw); }
   .player { flex-wrap: wrap; gap: 12px 14px; }
   .player .track { flex: 1 1 0; }
   .side { flex-basis: 100%; flex-direction: row; justify-content: space-between; gap: 12px; }
@@ -174,6 +188,8 @@ input[type=range]:disabled::-moz-range-thumb { width: 0; height: 0; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chips button { background: var(--surface2); color: var(--text2); padding: 7px 13px; border-radius: 999px; font-size: 13px; }
 .chips button.on { background: var(--text); color: var(--bg); }
+.chips button.swatch { width: 30px; height: 30px; padding: 0; border: 2px solid transparent; }
+.chips button.swatch.on { border-color: var(--text); box-shadow: inset 0 0 0 3px var(--surface); }
 .switch { width: 44px; height: 26px; padding: 3px; border-radius: 999px; background: var(--track); display: flex; }
 .switch i { width: 20px; height: 20px; border-radius: 50%; background: var(--text3); transition: transform .2s; }
 .switch[aria-checked="true"] { background: var(--text); }
@@ -192,3 +208,59 @@ input[type=range]:disabled::-moz-range-thumb { width: 0; height: 0; }
          padding: 9px 13px; font-size: 13px; max-width: calc(100% - 32px); z-index: 6; }
 
 @media (prefers-reduced-motion: reduce) { .bar i, .switch i { transition: none; } }
+
+/* ----- customisation ----- */
+html.no-motion *, html.no-motion *::before { transition: none !important; animation: none !important; }
+#panel { transition: transform 2s ease; }
+@keyframes beat { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.035); } }
+html.pulse .player.playing .cover { animation: beat 2.4s ease-in-out infinite; }
+.time .sec { font-size: .32em; letter-spacing: 0; margin-left: .08em; color: var(--text2); vertical-align: .9em; }
+
+/* Layouts. «Часы»: the clock first; «Музыка»: a big player; «Мониторинг»: big tiles. */
+html[data-layout="clock"] .time { font-size: min(calc(var(--clock) * 1.6), 46vh); }
+html[data-layout="clock"] .player { max-width: 460px; }
+html[data-layout="music"] .clock { position: absolute; top: 0; left: 50%; transform: translateX(-50%); margin-top: 4px; }
+html[data-layout="music"] .time { font-size: 34px; font-weight: 300; }
+html[data-layout="music"] .date { display: none; }
+html[data-layout="music"] .player { max-width: 720px; padding: 18px 20px; gap: 22px; }
+html[data-layout="music"] .cover { width: min(160px, 34vh); height: min(160px, 34vh); border-radius: 16px; }
+html[data-layout="music"] .title { font-size: 24px; }
+html[data-layout="music"] .meta { font-size: 15px; }
+html[data-layout="monitoring"] .time { font-size: min(64px, 16vh); }
+html[data-layout="monitoring"] .date { font-size: 13px; }
+html[data-layout="monitoring"] .center { flex: 0 0 auto; margin: 6px 0; }
+html[data-layout="monitoring"] .player { max-width: 460px; padding: 8px 12px; }
+html[data-layout="monitoring"] .cover { width: 48px; height: 48px; }
+html[data-layout="monitoring"] .metrics { flex: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px; align-content: center; }
+html[data-layout="monitoring"] .metric { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 12px 14px; }
+html[data-layout="monitoring"] .metric + .metric::before { display: none; }
+html[data-layout="monitoring"] .metric .head, html[data-layout="monitoring"] .metric .head .num { font-size: 15px; }
+html[data-layout="monitoring"] .metric .sub { font-size: 11px; margin: 3px 0 6px; }
+html[data-layout="monitoring"] .metric > .i { width: 24px; height: 24px; }
+
+/* Player parts the owner hid (Настройки → Плеер). */
+html.hide-cover .cover { display: none; }
+html.hide-progress .progress { display: none; }
+html.hide-volume .volume { display: none; }
+
+/* No connection: a clock screensaver instead of the «Нет связи» overlay. */
+body.saver .center, body.saver .metrics { visibility: hidden; }
+body.saver .link-state .state::after { content: " · нет связи"; }
+
+/* ----- settings sheet sections ----- */
+.prefs { display: grid; gap: 16px; }
+.prefs h3 { margin: 6px 0 -6px; font-size: 13px; font-weight: 600; color: var(--text); }
+.pref { display: grid; gap: 8px; }
+.pref.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; }
+.times-row { display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--text2); }
+.times-row input { font: inherit; color: var(--text); background: var(--surface2); border: 1px solid var(--border);
+                   border-radius: 10px; padding: 6px 8px; }
+.tiles { display: grid; gap: 6px; }
+.tile-row { display: flex; align-items: center; gap: 10px; background: var(--surface2); border-radius: 12px; padding: 6px 8px 6px 10px; }
+.tile-row .i { width: 18px; height: 18px; color: var(--text2); }
+.tile-row label { flex: 1; display: flex; align-items: center; gap: 10px; font-size: 14px; }
+.tile-row input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--text); }
+.tile-row .move { background: none; color: var(--text2); padding: 4px; border-radius: 8px; }
+.tile-row .move .i { width: 18px; height: 18px; }
+.tile-row .move:disabled { color: var(--disabled); }
