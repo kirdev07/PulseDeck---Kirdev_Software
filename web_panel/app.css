@@ -75,8 +75,9 @@ a.button { display: block; text-align: center; text-decoration: none; color: var
 /* ----- panel (DashboardScreen) ----- */
 #panel { position: relative; display: flex; flex-direction: column; align-items: center;
          min-height: calc(100dvh - 28px); }
-.status { position: absolute; inset: 0 0 auto 0; display: flex; justify-content: space-between; align-items: flex-start; }
-.link-state { display: flex; align-items: center; gap: 8px; margin-top: 10px; max-width: 60vw; color: var(--text2);
+/* The status row is its own line above the clock: a long one (uptime, PC battery) never covers it. */
+.status { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.link-state { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; color: var(--text2);
               font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .state .i { width: 12px; height: 12px; vertical-align: -1px; }
 .dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--text3); flex: none; }
@@ -89,9 +90,9 @@ a.button { display: block; text-align: center; text-decoration: none; color: var
 .battery.low { color: var(--text); }
 
 /* ClockBlock: 128 thin, −0.04em; date 17 light */
-.clock { text-align: center; margin-top: 6px; }
+.clock { text-align: center; margin-top: 0; }
 .time { color: var(--clock-color, var(--text)); font-family: var(--clock-font, inherit);
-        font-size: min(var(--clock), 30vh); font-weight: var(--clock-weight); line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+        font-size: min(var(--clock), 27vh); font-weight: var(--clock-weight); line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
 .date { font-size: 17px; font-weight: 300; letter-spacing: .5px; color: var(--text2); margin-top: 2px; }
 .date::first-letter { text-transform: uppercase; }
 
@@ -159,7 +160,7 @@ input[type=range]:disabled::-moz-range-thumb { width: 0; height: 0; }
 /* Portrait phone: the same small parts, stacked; metrics in two columns. */
 @media (orientation: portrait) {
   body { padding-left: max(18px, env(safe-area-inset-left)); padding-right: max(18px, env(safe-area-inset-right)); }
-  .clock { margin-top: 44px; }
+  .clock { margin-top: 18px; }
   .time { font-size: min(calc(var(--clock) * .75), 24vw); }
   .player { flex-wrap: wrap; gap: 12px 14px; }
   .player .track { flex: 1 1 0; }
@@ -362,3 +363,15 @@ html.no-motion .buddy { display: none; }
 .pc-extra { color: var(--text3); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
 .pc-extra::before { content: "·"; margin-right: 4px; }
 .pc-extra.battery .i { width: 20px; height: 20px; }
+/* Landscape: name, then uptime and PC battery on the same line; phone battery and gear on the right. */
+.pc-info { display: inline-flex; align-items: center; gap: 8px; min-width: 0; flex: 1; }
+.link-state { flex: 0 1 auto; }
+.status-right { margin-left: auto; }
+/* Portrait: uptime and PC battery get the whole second line. */
+@media (orientation: portrait) {
+  .status { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; align-items: center; }
+  .link-state { grid-column: 1; grid-row: 1; }
+  .status-right { grid-column: 2; grid-row: 1; }
+  .pc-info { grid-column: 1 / -1; grid-row: 2; padding-left: 15px; }
+  .pc-info .pc-extra:first-child::before, .pc-info .pc-extra[hidden] + .pc-extra::before { content: none; margin: 0; }
+}
