@@ -17,15 +17,18 @@
   <link rel="stylesheet" href="app.css">
 </head>
 <body>
-  <!-- Нет ключа доступа: ссылку или QR-код берут на ПК -->
-  <section id="nokey" class="screen" hidden>
+  <!-- Этот браузер ещё не подключён: код с экрана «Телефон» на ПК -->
+  <section id="pairing" class="screen" hidden>
     <img src="logo.svg" alt="" class="logo-big">
-    <h1>PulseDeck Panel</h1>
-    <p class="muted">Откройте на ПК <b>PulseDeck → Настройки → Веб-панель</b> и отсканируйте QR-код камерой телефона — или вставьте ключ доступа.</p>
-    <form id="keyform" class="keyform">
-      <input id="keyinput" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Ключ доступа">
-      <button type="submit">Подключить</button>
+    <h1>Подключение к ПК</h1>
+    <p class="muted" id="pairhint">На ПК откройте <b>PulseDeck → Телефон → Показать код</b>, выберите «Браузер» и наведите камеру на QR-код — или введите 6 цифр.</p>
+    <form id="pairform" class="keyform">
+      <input id="codeinput" type="text" inputmode="numeric" pattern="[0-9 ]*" maxlength="7" autocomplete="one-time-code"
+             placeholder="000 000" aria-label="Код с экрана ПК">
+      <button type="submit" id="pairbtn">Подключить</button>
     </form>
+    <p class="error" id="pairerror" hidden></p>
+    <p class="muted small">После подключения этот телефон запомнится — код больше не понадобится. Отключить его можно на ПК: «Телефон» → «Отозвать».</p>
   </section>
 
   <main id="panel" hidden>

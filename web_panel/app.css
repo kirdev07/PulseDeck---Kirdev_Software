@@ -31,6 +31,9 @@ body {
 .logo-big { width: 84px; height: 84px; }
 .screen h1 { font-size: 22px; margin: 16px 0 8px; }
 .keyform { display: flex; gap: 8px; margin-top: 18px; }
+.keyform input#codeinput { text-align: center; letter-spacing: .3em; font-size: 22px; font-variant-numeric: tabular-nums; }
+.error { color: var(--text); background: var(--surface2); border-radius: 12px; padding: 10px 12px; font-size: 14px; }
+.small { font-size: 12px; margin-top: 18px; }
 .keyform input {
   flex: 1; min-width: 0; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--border);
   background: var(--surface); color: var(--text); font-size: 16px;

@@ -17,6 +17,7 @@ from pulse_pc.ui.theme import icon, tokens
 # QR pairing is off for now: weak phone cameras could not read the code from a monitor.
 QR_ENABLED = True
 QR_SIZE = 240          # px on screen (logical)
+MODE_APP, MODE_WEB = "app", "web"     # what «Подключить по коду» pairs: an app or a phone browser
 
 ONLINE_SECONDS = 120        # the app polls the PC every few seconds while open
 STATUS = {st.UNKNOWN: ("Нет данных", "off"), st.STOPPED: ("Сервер остановлен", "off"),
@@ -133,12 +134,20 @@ class PhoneScreen(QWidget):
 
     def _code_card(self):
         card = Card("Подключить по коду")
-        card.body.addWidget(label("Защищённое подключение (TLS): отсканируйте QR-код в PulseDesk или PulseDeck Panel либо введите "
-                                  "код на телефоне и сверьте отпечаток.", "caption", wrap=True))
+        choice = QHBoxLayout()
+        choice.addWidget(label("Что подключаем", "caption"))
+        self.mode = QComboBox()
+        self.mode.addItem("Приложение PulseDesk / Panel", MODE_APP)
+        self.mode.addItem("Браузер (веб-панель, iPhone)", MODE_WEB)
+        self.mode.currentIndexChanged.connect(lambda _i: self._tick_code())
+        choice.addWidget(self.mode, 1)
+        card.body.addLayout(choice)
+        self.code_hint = label("", "caption", wrap=True)
+        card.body.addWidget(self.code_hint)
         self.qr = QLabel()
         self.qr.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.qr.hide()
-        self._qr_code = None
+        self._qr_key = None
         card.body.addWidget(self.qr)
         self.code_label = label("", "display")
         self.code_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -149,6 +158,9 @@ class PhoneScreen(QWidget):
         card.body.addWidget(self.code_detail)
         self.code_button = button("Показать код", self.start_code, "primary", "shield")
         card.body.addWidget(self.code_button)
+        self.web_button = button("Включить веб-панель", self.enable_web, symbol="play")
+        self.web_button.hide()
+        card.body.addWidget(self.web_button)
         self.code_timer = QTimer(self, interval=1000, timeout=self._tick_code)
         self._tick_code()
         return card
@@ -161,47 +173,92 @@ class PhoneScreen(QWidget):
             self.code_timer.start()
         self._tick_code()
 
+    def pair_browser(self):
+        """From Настройки → Веб-панель: «Браузер» chosen and a code on screen."""
+        self.mode.setCurrentIndex(self.mode.findData(MODE_WEB))
+        if not mobile_access.PAIRING.active():
+            self.start_code()
+
+    def enable_web(self):
+        """«Браузер» needs the web panel; switch it on from here."""
+        from pulse_pc.services.web_panel import settings as web_settings
+        config_dir = getattr(getattr(self.services, "web_panel", None), "config_dir", None)
+        if config_dir is None:
+            return
+        web_settings.update(config_dir, enabled=True)
+        self.services.web_panel.restart()
+
+    def _draw_qr(self, text, key):
+        if key == self._qr_key:      # draw once per code and mode, not every second
+            return
+        from pulse_pc.services.local_api import pairing_qr
+        image = QPixmap()
+        image.loadFromData(pairing_qr.png(text))
+        # Fixed on-screen size: big enough for any phone camera, small enough for the card.
+        # Nearest-neighbour scaling keeps the modules sharp.
+        ratio = self.qr.devicePixelRatioF()
+        side = round(QR_SIZE * ratio)
+        image = image.scaled(side, side, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.FastTransformation)
+        image.setDevicePixelRatio(ratio)
+        self.qr.setPixmap(image)
+        self._qr_key = key
+
     def _tick_code(self):
         from pulse_pc.services.local_api import tls
-        left = mobile_access.PAIRING.remaining()
+        web_mode = self.mode.currentData() == MODE_WEB
         state = self.store.state.phone
-        if not state.tls_port:
+        web = self.store.state.web_panel
+        self.code_hint.setText(
+            "Браузер любого телефона, и iPhone: наведите камеру на QR-код — откроется веб-панель, и телефон "
+            "запомнится. Подключается в режиме «только просмотр»; управление музыкой — «Доступ» → «Полный»."
+            if web_mode else
+            "Защищённое подключение (TLS): отсканируйте QR-код в PulseDesk или PulseDeck Panel либо введите "
+            "6 цифр и сверьте отпечаток.")
+        ready = (web.status == st.RUNNING and bool(web.addresses)) if web_mode else bool(state.tls_port)
+        self.web_button.setVisible(web_mode and web.status != st.RUNNING)
+        left = mobile_access.PAIRING.remaining()
+        if not ready:
+            self.qr.hide()
+            self._qr_key = None
             self.code_label.setText("")
-            self.code_detail.setText("Защищённый сервер не запущен." if state.status == st.RUNNING else "")
+            if web_mode:
+                self.code_detail.setText(web.error or "Веб-панель выключена. Включите её, чтобы подключить браузер.")
+            else:
+                self.code_detail.setText("Защищённый сервер не запущен." if state.status == st.RUNNING else "")
             self.code_button.setEnabled(False)
-            self.code_timer.stop()
+            self.code_button.setText("Отменить" if left else "Показать код")
             return
         self.code_button.setEnabled(True)
         if left:
             code = mobile_access.PAIRING.current()
             self.code_label.setText(f"{code[:3]} {code[3:]}")
-            config_dir = getattr(getattr(self.services, "local_api", None), "config_dir", None)
-            full = tls.fingerprint(config_dir) if config_dir else ""
-            print_ = tls.short_fingerprint(full) if full else ""
-            if QR_ENABLED and full and code != self._qr_code:   # draw once per code, not every second
-                from pulse_pc.services.local_api import pairing_qr
-                import socket
-                image = QPixmap()
-                image.loadFromData(pairing_qr.png(pairing_qr.payload(
-                    socket.gethostname(), list(state.addresses), state.tls_port, full, code)))
-                # Fixed on-screen size: big enough for any phone camera, small enough for the card.
-                # Nearest-neighbour scaling keeps the modules sharp.
-                side = round(QR_SIZE * self.qr.devicePixelRatioF())
-                image = image.scaled(side, side, Qt.AspectRatioMode.KeepAspectRatio,
-                                     Qt.TransformationMode.FastTransformation)
-                image.setDevicePixelRatio(self.qr.devicePixelRatioF())
-                self.qr.setPixmap(image)
-                self._qr_code = code
-            self.qr.setVisible(QR_ENABLED and bool(full))
-            self.code_detail.setText(f"Действует ещё {left} с · порт {state.tls_port}"
-                                     + (f"\nОтпечаток: {print_}" if print_ else ""))
+            if web_mode:
+                from pulse_pc.services.web_panel import settings as web_settings
+                link = web_settings.pairing_link(web.addresses[0], web.port, code)
+                self._draw_qr(link, (MODE_WEB, code))
+                self.qr.setVisible(True)
+                self.code_detail.setText(f"Действует ещё {left} с\nили откройте {web_settings.address(web.addresses[0], web.port)}"
+                                         " и введите код")
+            else:
+                config_dir = getattr(getattr(self.services, "local_api", None), "config_dir", None)
+                full = tls.fingerprint(config_dir) if config_dir else ""
+                print_ = tls.short_fingerprint(full) if full else ""
+                if QR_ENABLED and full:
+                    from pulse_pc.services.local_api import pairing_qr
+                    import socket
+                    self._draw_qr(pairing_qr.payload(socket.gethostname(), list(state.addresses), state.tls_port,
+                                                     full, code), (MODE_APP, code))
+                self.qr.setVisible(QR_ENABLED and bool(full))
+                self.code_detail.setText(f"Действует ещё {left} с · порт {state.tls_port}"
+                                         + (f"\nОтпечаток: {print_}" if print_ else ""))
             self.code_button.setText("Отменить")
         else:
             self.code_timer.stop()
             self.qr.hide()
-            self._qr_code = None
+            self._qr_key = None
             self.code_label.setText("")
-            self.code_detail.setText(f"Порт TLS {state.tls_port}. Код действует 2 минуты и один раз.")
+            self.code_detail.setText("Код действует 2 минуты и один раз." if web_mode
+                                     else f"Порт TLS {state.tls_port}. Код действует 2 минуты и один раз.")
             self.code_button.setText("Показать код")
 
     def _devices_card(self):
@@ -252,6 +309,8 @@ class PhoneScreen(QWidget):
     def _changed(self, part, value):
         if part == "phone":
             self._show(value)
+            self._tick_code()
+        elif part == "web_panel":
             self._tick_code()
 
     def _show(self, value):

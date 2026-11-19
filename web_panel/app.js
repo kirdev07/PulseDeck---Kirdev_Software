@@ -1,35 +1,68 @@
-// PulseDeck Panel in the browser. Talks to PulseDeck on the PC over a WebSocket (/ws) with
-// the access key from the link (#k=…). Values come from the PC as they are; unknown ones
-// stay «—». Same messages as the Android panel: hello, metrics, media, error.
+// PulseDeck Panel in the browser. The browser pairs once with the 6-digit code from
+// «Телефон» on the PC (POST /pair) and keeps its own token; then it talks to PulseDeck
+// over a WebSocket (/ws). Values come from the PC as they are; unknown ones stay «—».
+// Messages as for the Android panel: hello, metrics, media, error; plus access (control on/off).
 'use strict';
 
-const KEY_STORE = 'pulsedeck.key';
+const TOKEN_STORE = 'pulsedeck.token';
 const $ = (id) => document.getElementById(id);
-const state = { key: '', ws: null, retry: 0, control: false, media: null, mediaAt: 0, coverKey: '' };
+const state = { token: '', ws: null, retry: 0, control: false, media: null, mediaAt: 0, coverKey: '' };
 
-// ----- key: from the link's #fragment (never sent to the server in the URL), then remembered -----
-function readKey() {
-  const hash = new URLSearchParams(location.hash.slice(1));
-  const fromLink = hash.get('k');
-  if (fromLink) {
-    try { localStorage.setItem(KEY_STORE, fromLink); } catch (e) { /* private mode: keep it in memory */ }
-    history.replaceState(null, '', location.pathname);   // the key does not stay in the address bar
-    return fromLink;
-  }
-  try { return localStorage.getItem(KEY_STORE) || ''; } catch (e) { return ''; }
+// ----- token of this browser -----
+function loadToken() {
+  try { return localStorage.getItem(TOKEN_STORE) || ''; } catch (e) { return ''; }
+}
+function saveToken(token) {
+  state.token = token;
+  try { localStorage.setItem(TOKEN_STORE, token); } catch (e) { /* private mode: only for this visit */ }
+}
+function forgetToken(reason) {
+  try { localStorage.removeItem(TOKEN_STORE); } catch (e) { /* ignore */ }
+  state.token = '';
+  if (state.ws) state.ws.close();
+  showPairing(reason);
 }
 
-function forgetKey(reason) {
-  try { localStorage.removeItem(KEY_STORE); } catch (e) { /* ignore */ }
-  state.key = '';
-  showNoKey(reason);
+// «Браузер (iPhone)», «Браузер (Android)» … — the name shown in «Телефон» on the PC.
+function deviceName() {
+  const ua = navigator.userAgent;
+  const where = /iPad/.test(ua) ? 'iPad' : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android'
+    : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : 'устройство';
+  return `Браузер (${where})`;
 }
 
-function showNoKey(reason) {
+// ----- pairing -----
+function showPairing(reason) {
   $('panel').hidden = true;
   $('offline').hidden = true;
-  $('nokey').hidden = false;
-  if (reason) $('nokey').querySelector('p').textContent = reason;
+  $('pairing').hidden = false;
+  const error = $('pairerror');
+  error.hidden = !reason;
+  error.textContent = reason || '';
+}
+
+async function pair(code) {
+  const digits = String(code || '').replace(/\D/g, '');
+  if (digits.length !== 6) { showPairing('Код — 6 цифр с экрана «Телефон» на ПК.'); return; }
+  $('pairbtn').disabled = true;
+  $('pairbtn').textContent = 'Подключаю…';
+  try {
+    const response = await fetch('pair', {
+      method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code: digits, name: deviceName() }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.token) throw new Error(data.error || 'ПК отклонил подключение.');
+    saveToken(data.token);
+    $('pairing').hidden = true;
+    $('panel').hidden = false;
+    connect();
+  } catch (e) {
+    showPairing(e.message === 'Failed to fetch' ? 'Нет связи с ПК. Телефон в той же сети Wi-Fi?' : e.message);
+  } finally {
+    $('pairbtn').disabled = false;
+    $('pairbtn').textContent = 'Подключить';
+  }
 }
 
 // ----- formatting -----
@@ -117,9 +150,7 @@ function showMedia(msg) {
   $('artist').textContent = s ? [s.artist, s.album].filter(Boolean).join(' · ') : '';
   $('source').textContent = s ? (s.status === 'playing' ? 'Играет' : 'Пауза') + (s.source ? ' · ' + s.source : '') : 'Сейчас играет';
   $('progress').hidden = !(s && s.duration > 0);
-  $('controls').hidden = !(s && state.control);
-  $('playbtn').textContent = s && s.status === 'playing' ? '⏸' : '▶';
-  $('playbtn').setAttribute('aria-label', s && s.status === 'playing' ? 'Пауза' : 'Играть');
+  showControls();
   const coverKey = s && s.cover ? s.cover : '';
   if (coverKey !== state.coverKey) {
     state.coverKey = coverKey;
@@ -127,13 +158,20 @@ function showMedia(msg) {
     if (coverKey) {
       img.onload = () => { img.hidden = false; };
       img.onerror = () => { img.hidden = true; };
-      img.src = `cover?key=${encodeURIComponent(coverKey)}&k=${encodeURIComponent(state.key)}`;
+      img.src = `cover?key=${encodeURIComponent(coverKey)}&t=${encodeURIComponent(state.token)}`;
     } else {
       img.hidden = true;
       img.removeAttribute('src');
     }
   }
   tickProgress();
+}
+
+function showControls() {
+  const s = state.media;
+  $('controls').hidden = !(s && state.control);
+  $('playbtn').textContent = s && s.status === 'playing' ? '⏸' : '▶';
+  $('playbtn').setAttribute('aria-label', s && s.status === 'playing' ? 'Пауза' : 'Играть');
 }
 
 function tickProgress() {
@@ -154,8 +192,9 @@ function setStatus(text, online) {
 }
 
 function connect() {
+  if (!state.token) { showPairing(); return; }
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const ws = new WebSocket(`${proto}//${location.host}/ws?k=${encodeURIComponent(state.key)}`);
+  const ws = new WebSocket(`${proto}//${location.host}/ws?t=${encodeURIComponent(state.token)}`);
   state.ws = ws;
   let opened = false;
   ws.onopen = () => { opened = true; state.retry = 0; };
@@ -165,10 +204,15 @@ function connect() {
     if (msg.type === 'hello') {
       $('pcname').textContent = msg.name || 'ПК';
       state.control = !!msg.control;
-      setStatus('Подключено', true);
+      setStatus(state.control ? 'Подключено · управление музыкой' : 'Подключено · просмотр', true);
       $('offline').hidden = true;
+      $('pairing').hidden = true;
       $('panel').hidden = false;
-      $('nokey').hidden = true;
+      showControls();
+    } else if (msg.type === 'access') {
+      state.control = !!msg.control;
+      setStatus(state.control ? 'Подключено · управление музыкой' : 'Подключено · просмотр', true);
+      showControls();
     } else if (msg.type === 'metrics') {
       showMetrics(msg);
     } else if (msg.type === 'media') {
@@ -178,28 +222,32 @@ function connect() {
     }
   };
   ws.onclose = (event) => {
-    state.ws = null;
-    if (!opened && state.retry >= 1) {
-      // The server refuses the key with HTTP 403 before the socket opens; ask the PC how it is.
-      fetch(`cover?key=&k=${encodeURIComponent(state.key)}`, { cache: 'no-store' }).then((r) => {
-        if (r.status === 403) forgetKey('Ключ доступа больше не действует (на ПК создан новый). Отсканируйте новый QR-код: PulseDeck → Настройки → Веб-панель.');
+    if (state.ws === ws) state.ws = null;
+    if (event.code === 4001) {          // «Отозвать» on the PC
+      forgetToken('Доступ этого телефона отозван на ПК. Чтобы подключиться снова, покажите новый код.');
+      return;
+    }
+    if (!opened && state.token) {
+      // Refused before opening: either the token is unknown (revoked while offline) or the PC is away.
+      fetch(`cover?key=&t=${encodeURIComponent(state.token)}`, { cache: 'no-store' }).then((r) => {
+        if (r.status === 403) forgetToken('Этот телефон больше не подключён к ПК. Покажите на ПК новый код.');
         else scheduleReconnect();
       }).catch(scheduleReconnect);
       return;
     }
-    scheduleReconnect(event.code);
+    scheduleReconnect();
   };
 }
 
 function scheduleReconnect() {
-  if (!state.key) return;
+  if (!state.token) return;
   setStatus('Нет связи', false);
   if (!$('panel').hidden) {
     $('offline').hidden = false;
     $('offline-text').textContent = 'Переподключаюсь… Проверьте, что PulseDeck запущен, а телефон в той же сети Wi-Fi.';
   }
   const delay = Math.min(15000, 1000 * 2 ** state.retry++);
-  setTimeout(() => { if (!state.ws && state.key) connect(); }, delay);
+  setTimeout(() => { if (!state.ws && state.token) connect(); }, delay);
 }
 
 let flashTimer = 0;
@@ -211,6 +259,7 @@ function flash(text) {
 
 // ----- keep the screen on (Wake Lock: Chrome, Safari 16.4+) -----
 let wakeLock = null;
+let wantAwake = false;
 async function keepAwake(on) {
   try {
     if (on && 'wakeLock' in navigator) {
@@ -240,28 +289,32 @@ document.addEventListener('DOMContentLoaded', () => {
     const cmd = event.target.closest('button')?.dataset.cmd;
     if (cmd && state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify({ type: 'command', action: cmd }));
   });
-  let wantAwake = false;
   $('awake').addEventListener('click', () => { wantAwake = !wakeLock; keepAwake(wantAwake); });
   updateAwakeButton();
   // The browser drops the lock when the tab is hidden; take it again on return.
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && wantAwake && wakeLock === null) keepAwake(true);
   });
-  $('keyform').addEventListener('submit', (event) => {
+  $('codeinput').addEventListener('input', (event) => {
+    const digits = event.target.value.replace(/\D/g, '').slice(0, 6);
+    event.target.value = digits.length > 3 ? `${digits.slice(0, 3)} ${digits.slice(3)}` : digits;
+  });
+  $('pairform').addEventListener('submit', (event) => {
     event.preventDefault();
-    let value = $('keyinput').value.trim();
-    const match = value.match(/[#&]k=([^&]+)/);       // a whole link pasted
-    if (match) value = decodeURIComponent(match[1]);
-    if (value.length < 16) { $('keyinput').focus(); return; }
-    try { localStorage.setItem(KEY_STORE, value); } catch (e) { /* ignore */ }
-    state.key = value;
-    $('nokey').hidden = true;
-    $('panel').hidden = false;
-    connect();
+    pair($('codeinput').value);
   });
 
-  state.key = readKey();
-  if (!state.key) { showNoKey(); return; }
+  // QR code from the PC: http://pc:8780/#pair=123456 — the code is used once, then removed.
+  const fromQr = new URLSearchParams(location.hash.slice(1)).get('pair');
+  if (fromQr) history.replaceState(null, '', location.pathname);
+  state.token = loadToken();
+  if (fromQr && !state.token) {
+    showPairing();
+    $('codeinput').value = fromQr;
+    pair(fromQr);
+    return;
+  }
+  if (!state.token) { showPairing(); return; }
   $('panel').hidden = false;
   connect();
 });

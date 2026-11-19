@@ -14,7 +14,8 @@ def public_devices(data):
     """Device records without token hashes, for the UI."""
     return tuple({"id": d.get("id", ""), "name": d.get("name", ""), "added": d.get("added", ""),
                   "last_seen": d.get("last_seen", ""),
-                  "access": d.get("access", mobile_access.ACCESS_FULL)} for d in data["devices"])
+                  "access": d.get("access", mobile_access.ACCESS_FULL),
+                  "kind": mobile_access.kind_of(d)} for d in data["devices"])
 
 
 class LocalApiService:

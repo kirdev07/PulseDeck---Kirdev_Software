@@ -70,18 +70,32 @@ def set_option(key, value):
         save(data)
 
 
-def add_device(name):
+# Kinds of paired devices. A token works only for its own kind: a browser token travels over
+# plain HTTP (web panel), so it must never open the TLS API of the apps.
+KIND_APP = "app"          # PulseDesk / PulseDeck Panel (API v1 over TLS); devices without "kind"
+KIND_WEB = "web"          # a phone browser with the web panel
+
+
+def add_device(name, kind=KIND_APP, access=None):
     """Register a phone and return its token (shown only once)."""
     with LOCK:
         data = load()
         if len(data["devices"]) >= MAX_DEVICES:
             raise ValueError("Слишком много устройств. Отзовите ненужные в окне PulseDeck.")
         token = secrets.token_urlsafe(24)
-        data["devices"].append({
-            "id": secrets.token_hex(6), "name": name[:40] or "Телефон", "hash": _hash(token),
-            "added": datetime.now().isoformat(timespec="seconds"), "last_seen": ""})
+        device = {"id": secrets.token_hex(6), "name": name[:40] or "Телефон", "hash": _hash(token),
+                  "added": datetime.now().isoformat(timespec="seconds"), "last_seen": ""}
+        if kind != KIND_APP:
+            device["kind"] = kind
+        if access is not None:
+            device["access"] = access
+        data["devices"].append(device)
         save(data)
         return token
+
+
+def kind_of(device):
+    return (device or {}).get("kind", KIND_APP)
 
 
 ACCESS_FULL = "full"      # everything the API offers (default; devices paired before this setting)
@@ -167,8 +181,8 @@ class PairingCodes:
 PAIRING = PairingCodes()
 
 
-def authenticate(token):
-    """Return the device record for a valid token, else None."""
+def authenticate(token, kind=KIND_APP):
+    """Return the device record for a valid token of this kind, else None."""
     if not token:
         return None
     digest = _hash(token)
@@ -176,7 +190,7 @@ def authenticate(token):
         devices = load()["devices"]
     found = None
     for device in devices:
-        if hmac.compare_digest(str(device.get("hash", "")), digest):
+        if hmac.compare_digest(str(device.get("hash", "")), digest) and kind_of(device) == kind:
             found = device
     if found:
         now = time.monotonic()

@@ -366,7 +366,9 @@ class FileSenderTests(ServiceTestCase):
             sender.send(TOKEN, "", ["x"])
         done = []
         sender.finished.connect(lambda ok, text: done.append((ok, text)))
-        with mock.patch("modules.transfer_history.record_transfer"):
+        # desktop_services imports record_transfer by name: patch it there, or the real
+        # %APPDATA%/config transfers.json gets a «missing.txt — Ошибка» entry on every run.
+        with mock.patch("desktop_services.record_transfer"), mock.patch("modules.transfer_history.record_transfer"):
             sender.send(TOKEN, ADMIN, [str(Path(self.dir.name) / "missing.txt")])
             self.assertTrue(wait_for(lambda: bool(done)))
         self.assertFalse(done[0][0])
