@@ -7,6 +7,9 @@
 // another app on the phone pauses — that is how iOS works). It starts only from a tap (browser
 // rule): the switch in Настройки, or the first tap on the page after it was switched on.
 // Buttons work only where music control is allowed (HTTPS + «Полный»); otherwise view only.
+// iPhone: the audio session is «playback» (iOS 17+), otherwise iOS stops the sound when the
+// phone locks and the player disappears; the sound never pauses (after ~30 s on pause iOS
+// drops the player), and if iOS pauses it (a call, Siri) it starts again on the next tap.
 'use strict';
 
 const lockScreen = { audio: null, on: false, waiting: false, cover: '' };
@@ -30,10 +33,17 @@ function lockHandlers(active) {
 
 async function startLockScreen() {
   if (!lockScreenSupported()) return false;
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch (e) { /* older iOS */ }
   if (!lockScreen.audio) {
-    lockScreen.audio = new Audio('silence.wav');
-    lockScreen.audio.loop = true;
-    lockScreen.audio.setAttribute('playsinline', '');
+    const audio = new Audio('silence.wav');
+    audio.loop = true;
+    audio.preload = 'auto';
+    audio.setAttribute('playsinline', '');
+    audio.addEventListener('pause', () => {          // paused by the system: back on the next tap
+      if (lockScreen.on && prefs.lockScreen) { lockScreen.on = false; waitForTap(); }
+    });
+    document.body.append(audio);                   // some iOS versions want it in the page
+    lockScreen.audio = audio;
   }
   try {
     await lockScreen.audio.play();
@@ -50,7 +60,7 @@ async function startLockScreen() {
 }
 
 function stopLockScreen() {
-  lockScreen.on = false;
+  lockScreen.on = false;                           // first: the pause below is ours, not the system's
   if (lockScreen.audio) lockScreen.audio.pause();
   if (!lockScreenSupported()) return;
   lockHandlers(false);
