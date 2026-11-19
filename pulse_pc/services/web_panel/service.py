@@ -8,7 +8,8 @@ Two ports, one app:
 
 Pairing works like the apps: «Телефон» → «Показать код» → «Браузер»; the browser sends the
 6 digits to POST /pair and keeps its own token. Browsers are listed among the paired
-devices: view only by default; «Полный» lets a browser paired over HTTPS control music
+devices: a browser paired over HTTPS gets «Полный» (music control), one paired over
+plain HTTP «Просмотр»;
 (play/pause, next/previous, seek, PC volume, which app is controlled). «Отозвать»
 disconnects it within AUTH_RECHECK_SECONDS.
 
@@ -127,9 +128,12 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
             logger.warning("Веб-панель: неверный код подключения от %s", request.remote)
             text = "Неверный код." if pairing.active() else "Код больше не действует. Покажите новый на ПК."
             return web.json_response({"ok": False, "error": text}, status=403)
+        # Paired over HTTPS with the code the owner showed on the PC: trusted like the apps
+        # («Полный»). Over plain HTTP the token crossed the network unencrypted: view only.
+        access = mobile_access.ACCESS_FULL if request.secure else mobile_access.ACCESS_VIEW
         try:
             token = await asyncio.to_thread(mobile_access.add_device, name, mobile_access.KIND_WEB,
-                                            mobile_access.ACCESS_VIEW, request.secure)
+                                            access, request.secure)
         except ValueError as exc:
             return web.json_response({"ok": False, "error": str(exc)}, status=409)
         logger.info("Браузер «%s» подключён к веб-панели по коду (%s, %s)", name, request.remote,

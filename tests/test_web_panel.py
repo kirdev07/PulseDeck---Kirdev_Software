@@ -140,6 +140,13 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(mobile_access.kind_of(devices[0]), mobile_access.KIND_WEB)
         self.assertEqual(devices[0]["access"], mobile_access.ACCESS_VIEW)
 
+    async def test_https_pairing_is_trusted_like_the_apps(self):
+        with mock.patch.object(web.BaseRequest, "secure", new_callable=mock.PropertyMock, return_value=True):
+            await self.paired()
+        device = mobile_access.load()["devices"][0]
+        self.assertTrue(device["secure"])
+        self.assertEqual(device["access"], mobile_access.ACCESS_FULL)
+
     async def test_socket_needs_a_browser_token(self):
         self.assertEqual((await self.client.get("/ws?t=wrong")).status, 403)
         app_token = mobile_access.add_device("PulseDesk")

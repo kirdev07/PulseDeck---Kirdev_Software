@@ -36,7 +36,9 @@ function deviceName() {
   const where = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'iPad'
     : /iPhone/.test(ua) ? 'iPhone' : /Android/.test(ua) ? 'Android'
     : /Mac OS X/.test(ua) ? 'Mac' : /Windows/.test(ua) ? 'Windows' : 'устройство';
-  return `Браузер (${where})`;
+  // A page opened from the home-screen icon keeps its own storage, separate from Safari.
+  const standalone = navigator.standalone || window.matchMedia('(display-mode: standalone)').matches;
+  return standalone ? `PulseDeck (${where}, экран Домой)` : `Браузер (${where})`;
 }
 const isApple = () => /iPhone|iPad|Macintosh/.test(navigator.userAgent);
 
