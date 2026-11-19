@@ -18,6 +18,10 @@ PulseDeck использует следующие библиотеки с отк
 | pycaw | 20260927 | MIT | https://github.com/AndreMiras/pycaw |
 | winrt-runtime | 4.0.3 | MIT | https://pywinrt.readthedocs.io |
 | winrt-Windows.Media.Control | 4!10.0.28000.2705 | MIT | https://pywinrt.readthedocs.io |
+| pywebpush | 2.5.0 | MPL-2.0 | https://github.com/web-push-libs/pywebpush |
+| py-vapid | 1.9.6 | MPL-2.0 | https://github.com/web-push-libs/vapid |
+| http-ece | 1.2.1 | MIT | https://github.com/web-push-libs/encrypted-content-encoding |
+| requests | 2.34.2 | Apache-2.0 | https://requests.readthedocs.io |
 | Python | 3.x | PSF License | https://www.python.org |
 
 Плюс зависимости перечисленных библиотек (например, `cffi` для `cryptography`, `comtypes` для

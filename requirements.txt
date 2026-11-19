@@ -11,3 +11,4 @@ pillow>=10.0
 cryptography>=42
 # QR-код сопряжения телефона (чистый Python)
 segno>=1.6
+pywebpush>=2.0        # Web Push for the web panel (notifications when it is closed)

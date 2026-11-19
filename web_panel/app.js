@@ -57,7 +57,7 @@ const DEFAULTS = {
   idle: 'wave', idleSize: 'normal', motion: true, pulse: false,
   layout: 'panel', tiles: ['cpu', 'gpu', 'ram', 'net', 'disk'], tileOrder: Object.keys(TILES), disk: '',
   playerAlways: false, showCover: true, showProgress: true, showVolume: true, sparks: true, tileRows: 'wrap',
-  alerts: true, notify: false, alertOffline: true,
+  alerts: true, notify: false, push: false, alertOffline: true,
   limits: { cpu: 90, gpu: 90, ram: 90, vram: 95, disk: 10, battery: 20 },
   burnIn: true, offlineClock: true,
 };
@@ -451,6 +451,8 @@ function alertedTiles() {
 // A notice: always on the page; also a system notification when allowed (Настройки → Уведомления).
 async function notify(title, body, tag) {
   toast(body);
+  // With Web Push on, the PC sends this notice itself (also when the panel is closed): no duplicate.
+  if (prefs.push && tag !== 'offline' && tag !== 'test') return;
   if (!prefs.notify || !('Notification' in window) || Notification.permission !== 'granted') return;
   try {
     const registration = await navigator.serviceWorker?.getRegistration();
@@ -458,6 +460,43 @@ async function notify(title, body, tag) {
     else new Notification(title, { body, tag: `pulsedeck-${tag}`, icon: 'icon.png' });
   } catch (e) { /* the browser refused: the toast is enough */ }
 }
+// ----- Web Push: subscribe this phone at the PC (HTTPS + home-screen app on iPhone) -----
+const pushSupported = () => state.secure && 'serviceWorker' in navigator && 'PushManager' in window;
+function base64ToBytes(text) {
+  const raw = atob(text.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((text.length + 3) % 4));
+  return Uint8Array.from(raw, (ch) => ch.charCodeAt(0));
+}
+async function postPush(path, extra) {
+  const response = await fetch(path, { method: 'POST', cache: 'no-store', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ t: state.token, limits: prefs.limits, alerts: prefs.alerts, ...extra }) });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+  return data;
+}
+async function enablePush() {
+  const registration = await navigator.serviceWorker.register('sw.js');
+  await navigator.serviceWorker.ready;
+  const { key } = await (await fetch('push/key', { cache: 'no-store' })).json();
+  let subscription = await registration.pushManager.getSubscription();
+  if (subscription) await subscription.unsubscribe();          // a fresh one for the current PC key
+  subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: base64ToBytes(key) });
+  await postPush('push/subscribe', { subscription: subscription.toJSON() });
+}
+async function disablePush() {
+  try {
+    const registration = await navigator.serviceWorker.getRegistration();
+    const subscription = registration && await registration.pushManager.getSubscription();
+    if (subscription) await subscription.unsubscribe();
+  } catch (e) { /* already gone */ }
+  try { await postPush('push/unsubscribe', {}); } catch (e) { /* the PC forgets it on revoke anyway */ }
+}
+let pushSync = 0;
+function syncPushPrefs() {          // limits changed: tell the PC (debounced)
+  if (!prefs.push) return;
+  clearTimeout(pushSync);
+  pushSync = setTimeout(() => postPush('push/prefs', {}).catch(() => {}), 600);
+}
+
 async function enableNotifications() {
   if (!('Notification' in window)) {
     toast(isApple() ? 'На iPhone уведомления работают, если открыть панель со значка «На экран Домой» (iOS 16.4+).'
@@ -467,6 +506,16 @@ async function enableNotifications() {
   try { await navigator.serviceWorker?.register('sw.js'); } catch (e) { /* plain HTTP: notifications without a worker */ }
   const result = await Notification.requestPermission();
   if (result !== 'granted') { toast('Уведомления не разрешены. Разрешите их в настройках браузера для этого сайта.'); return false; }
+  if (pushSupported()) {
+    try {
+      await enablePush();
+      prefs.push = true;
+      savePrefs();
+    } catch (e) {
+      prefs.push = false;
+      toast(`Уведомления при закрытой панели не включились: ${e.message}. Пока панель открыта — работают.`);
+    }
+  }
   notify('PulseDeck', 'Уведомления включены: пришлю, если ПК перегреется по нагрузке, кончится место или пропадёт связь.', 'test');
   return true;
 }
@@ -1251,6 +1300,7 @@ function icon(id) {
 function set(key, value) {
   prefs[key] = value;
   savePrefs();
+  if (key === 'limits' || key === 'alerts') syncPushPrefs();
   applyPrefs();
   buildSettings();
 }
@@ -1379,13 +1429,17 @@ function notifyRow() {
   const granted = supported && Notification.permission === 'granted';
   const button = el('button', { type: 'button', class: 'switch', role: 'switch', 'aria-checked': String(prefs.notify && granted),
                                 'aria-label': 'Системные уведомления', onclick: async () => {
-    if (prefs.notify && granted) { set('notify', false); return; }
+    if (prefs.notify && granted) { if (prefs.push) await disablePush(); prefs.push = false; set('notify', false); return; }
     if (await enableNotifications()) set('notify', true); else buildSettings();
   } }, el('i'));
   const note = !supported
     ? (isApple() ? 'На iPhone: откройте панель со значка «На экран Домой» (iOS 16.4+) — тогда уведомления можно включить.'
       : 'Этот браузер не поддерживает уведомления.')
-    : 'Приходят, пока панель открыта или свёрнута недавно. Когда она закрыта совсем, iPhone и Android их не получат — для этого есть Telegram-бот PulseDeck.';
+    : prefs.push ? 'Включены и при закрытой панели: ПК сам присылает их через push-сервис телефона (нужен интернет на ПК).'
+      : !state.secure ? 'Сейчас — пока панель открыта. Чтобы приходили и при закрытой, откройте защищённый режим (HTTPS).'
+        : isApple() && !(navigator.standalone || window.matchMedia('(display-mode: standalone)').matches)
+          ? 'На iPhone при закрытой панели — только со значка «На экран Домой» (iOS 16.4+).'
+          : 'Включите — будут приходить и при закрытой панели.';
   return el('div', { class: 'pref' }, el('div', { class: 'pref row' }, el('span', { text: 'Системные уведомления' }), button),
     el('div', { class: 'note-text', text: note }));
 }

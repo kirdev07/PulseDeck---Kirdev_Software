@@ -158,6 +158,60 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
                     "HTTPS" if request.secure else "HTTP, только просмотр")
         return web.json_response({"ok": True, "token": token, "name": socket.gethostname()})
 
+    # ----- Web Push: notifications when the panel is closed (push.py) -----
+    async def push_key(_request):
+        if not config_dir:
+            raise web.HTTPNotFound()
+        from pulse_pc.services.web_panel import push
+        return web.json_response({"ok": True, "key": await asyncio.to_thread(push.public_key, config_dir)})
+
+    async def push_body(request):
+        """(device, body) for a paired browser on HTTPS, or an error response."""
+        try:
+            body = await request.json()
+        except ValueError:
+            body = {}
+        if not isinstance(body, dict):
+            body = {}
+        device = await asyncio.to_thread(browser, str(body.get("t", "")))
+        if not device:
+            return None, web.json_response({"ok": False, "error": "not_paired"}, status=403)
+        if not request.secure:
+            return None, web.json_response({"ok": False, "error": "Уведомления — только в защищённом режиме (HTTPS)."},
+                                           status=403)
+        return (device, body), None
+
+    async def push_subscribe(request):
+        from pulse_pc.services.web_panel import push
+        found, error = await push_body(request)
+        if error:
+            return error
+        device, body = found
+        subscription = body.get("subscription")
+        if not push.valid_subscription(subscription):
+            return web.json_response({"ok": False, "error": "bad_subscription"}, status=400)
+        await asyncio.to_thread(push.subscribe, config_dir, device["id"], subscription, body.get("limits"),
+                                body.get("alerts", True))
+        logger.info("Уведомления включены: %s", device.get("name", "?"))
+        return web.json_response({"ok": True})
+
+    async def push_prefs(request):
+        from pulse_pc.services.web_panel import push
+        found, error = await push_body(request)
+        if error:
+            return error
+        device, body = found
+        await asyncio.to_thread(push.update, config_dir, device["id"], body.get("limits"), body.get("alerts", True))
+        return web.json_response({"ok": True})
+
+    async def push_unsubscribe(request):
+        from pulse_pc.services.web_panel import push
+        found, error = await push_body(request)
+        if error:
+            return error
+        await asyncio.to_thread(push.unsubscribe, config_dir, found[0]["id"])
+        return web.json_response({"ok": True})
+
     async def cover(request):
         if not await asyncio.to_thread(browser, request.query.get("t", "")):
             raise web.HTTPForbidden()
@@ -337,6 +391,10 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
     app.router.add_get("/ca.crt", authority)
     app.router.add_get("/ca.mobileconfig", authority)
     app.router.add_post("/pair", pair)
+    app.router.add_get("/push/key", push_key)
+    app.router.add_post("/push/subscribe", push_subscribe)
+    app.router.add_post("/push/prefs", push_prefs)
+    app.router.add_post("/push/unsubscribe", push_unsubscribe)
     for path in FILES:
         app.router.add_get(path, static)
     return app
@@ -348,10 +406,36 @@ class WebPanelService:
         self.store = store
         self.config_dir = Path(config_dir)
         self.runner = None
+        self.watch = None
 
     @property
     def running(self):
         return self.runner is not None
+
+    async def _watch_loop(self):
+        """While some phone is subscribed: sample the PC and push notices over its limits."""
+        from modules.display_api import MetricsReader
+        from pulse_pc.services.web_panel import push
+        monitor = push.Monitor(self.config_dir, socket.gethostname())
+        reader = None
+        try:
+            while True:
+                subs = await asyncio.to_thread(push.subscribers, self.config_dir)
+                if subs:
+                    reader = reader or MetricsReader()
+                    try:
+                        for device_id, subscription, tag, body in monitor.check(await reader.read(), subs):
+                            await asyncio.to_thread(push.send, self.config_dir, device_id, subscription,
+                                                    monitor.title(), body, tag)
+                    except Exception:  # noqa: BLE001 - one bad round must not stop the watch
+                        logger.exception("Веб-панель: проверка для уведомлений")
+                elif reader:
+                    reader.close()
+                    reader = None
+                await asyncio.sleep(push.CHECK_SECONDS)
+        finally:
+            if reader:
+                reader.close()
 
     def start(self):
         return self.runtime.submit(self._start())
@@ -404,11 +488,16 @@ class WebPanelService:
             error = "Не удалось создать сертификат HTTPS: работает только просмотр по HTTP."
             logger.exception("Веб-панель: сертификат HTTPS: %s", exc)
         self.runner = runner
+        self.watch = asyncio.create_task(self._watch_loop())
         self._post(status=st.RUNNING, port=data["port"], https_port=https, addresses=addresses, clients=0, error=error)
         logger.info("Веб-панель: http://%s:%s, HTTPS %s", addresses[0] if addresses else "localhost", data["port"],
                     https or "нет")
 
     async def _stop(self):
+        if self.watch:
+            self.watch.cancel()
+            await asyncio.gather(self.watch, return_exceptions=True)
+            self.watch = None
         if self.runner:
             await self.runner.cleanup()
             self.runner = None
