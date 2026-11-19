@@ -90,6 +90,9 @@ def metrics_message(snap, labels=None):
         "ram": {"percent": _round(snap.ram), "used": snap.ram_used, "total": snap.ram_total},
         "net": {"down": _round(getattr(snap, "net_down", None), 0), "up": _round(getattr(snap, "net_up", None), 0)},
         "uptime": _round(getattr(snap, "uptime", None), 0),
+        # Laptops only; a desktop PC has no battery: null.
+        "battery": None if getattr(snap, "battery", None) is None else
+        {"percent": _round(snap.battery, 0), "plugged": bool(getattr(snap, "plugged", False))},
         "disks": [{"name": disk.mount, "label": labels.get(disk.mount, ""), "total": disk.total,
                    "free": max(0, disk.total - disk.used)} for disk in snap.disks],
     }

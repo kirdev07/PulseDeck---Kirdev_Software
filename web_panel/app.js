@@ -109,6 +109,7 @@ function applyPrefs() {
   root.dataset.layout = prefs.layout;
   root.dataset.bg = root.dataset.theme === 'light' ? prefs.bgLight : prefs.bgDark;
   root.dataset.uiFont = prefs.uiFont;
+  if (!CLOCK_FONTS[prefs.clockFont]) prefs.clockFont = 'system';
   root.dataset.clockFont = prefs.clockFont;
   const clock = CLOCK_COLORS[prefs.clockColor];
   if (clock) root.style.setProperty('--clock-color', clock); else root.style.removeProperty('--clock-color');
@@ -323,9 +324,24 @@ function renderMetrics() {
   }
 }
 
+// Next to the PC name: how long it has been on, and its battery if it is a laptop.
+function showPcStatus(m) {
+  $('pc-uptime').hidden = m.uptime == null;
+  $('pc-uptime').textContent = m.uptime == null ? '' : `работает ${uptime(m.uptime)}`;
+  const b = m.battery;
+  $('pc-battery').hidden = !b;
+  if (!b) return;
+  $('pc-battery-level').setAttribute('width', String(Math.max(0.6, 13.4 * (b.percent || 0) / 100)));
+  $('pc-battery-bolt').toggleAttribute('hidden', !b.plugged);
+  $('pc-battery-text').textContent = `${Math.round(b.percent)}%`;
+  $('pc-battery').classList.toggle('low', b.percent <= 20 && !b.plugged);
+  $('pc-battery').title = b.plugged ? `ПК на зарядке: ${Math.round(b.percent)}%` : `Батарея ПК: ${Math.round(b.percent)}%`;
+}
+
 let knownDisks = '';
 function showMetrics(m) {
   state.metrics = m;
+  showPcStatus(m);
   renderMetrics();
   updateBuddy();
   const disks = (m.disks || []).map((d) => d.name).join();
@@ -1090,8 +1106,28 @@ function set(key, value) {
   applyPrefs();
   buildSettings();
 }
-const FONTS = [['system', 'Системный'], ['rounded', 'Округлый'], ['mono', 'Моноширинный'], ['serif', 'С засечками'],
-               ['hand', 'Рукописный']];
+const FONTS = [['system', 'Системный'], ['rounded', 'Округлый'], ['mono', 'Моноширинный'], ['serif', 'С засечками']];
+// Clock fonts (the CSS stacks: html[data-clock-font] in app.css).
+const CLOCK_FONTS = {
+  system: ['Системный', 'inherit'],
+  rounded: ['Округлый', 'ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Nunito", sans-serif'],
+  condensed: ['Узкий', '"Avenir Next Condensed", "sans-serif-condensed", "Roboto Condensed", "Arial Narrow", sans-serif'],
+  geometric: ['Геометрический', 'Futura, "Century Gothic", "Avenir Next", "Product Sans", sans-serif'],
+  didot: ['Элегантный', 'Didot, "Bodoni 72", "Bodoni MT", "Noto Serif Display", serif'],
+  serif: ['С засечками', 'ui-serif, "New York", Georgia, "Noto Serif", serif'],
+  mono: ['Моноширинный', 'ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace'],
+  typewriter: ['Машинка', '"American Typewriter", "Cutive Mono", "serif-monospace", "Courier New", monospace'],
+  hand: ['Рукописный', '"Snell Roundhand", "Dancing Script", "Segoe Script", cursive'],
+  marker: ['Маркер', '"Marker Felt", "Chalkboard SE", "Coming Soon", casual, "Comic Sans MS", cursive'],
+};
+function fontPicker() {
+  return el('div', { class: 'fonts' }, ...Object.entries(CLOCK_FONTS).map(([key, [name, stack]]) => {
+    const sample = el('span', { class: 'sample', text: '12:34' });
+    sample.style.fontFamily = stack;
+    return el('button', { type: 'button', class: prefs.clockFont === key ? 'on' : '', 'aria-label': name,
+                          onclick: () => set('clockFont', key) }, sample, el('span', { class: 'name', text: name }));
+  }));
+}
 function chips(key, options, swatch) {
   return el('div', { class: 'chips' }, ...options.map(([value, label, color]) => {
     const button = el('button', { type: 'button', class: (swatch ? 'swatch ' : '') + (prefs[key] === value ? 'on' : ''),
@@ -1129,8 +1165,8 @@ function buildSettings() {
       ...Object.entries(CLOCK_COLORS).filter(([k]) => k !== 'accent').map(([k, v]) => [k, COLOR_NAMES[k] || k, v])], true)),
 
     el('h3', { text: 'Шрифты' }),
-    pref('Интерфейс', chips('uiFont', FONTS.filter(([k]) => k !== 'hand'))),
-    pref('Часы', chips('clockFont', FONTS)),
+    pref('Интерфейс', chips('uiFont', FONTS)),
+    pref('Часы', fontPicker()),
 
     el('h3', { text: 'Раскладка' }),
     chips('layout', [['panel', 'Panel'], ['clock', 'Часы'], ['music', 'Музыка'], ['monitoring', 'Мониторинг']]),

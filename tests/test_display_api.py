@@ -37,6 +37,13 @@ class WireFormatTests(unittest.TestCase):
         self.assertEqual((message["gpu"]["memory_total"], message["gpu"]["memory_used"]), (6 << 30, 1 << 30))
         self.assertEqual(message["net"], {"down": 2048.0, "up": None})
 
+    def test_battery_only_when_the_pc_has_one(self):
+        desktop = SimpleNamespace(cpu=1.0, gpu=None, gpu_name="", ram=1.0, ram_used=1, ram_total=2, disks=[])
+        self.assertIsNone(display_api.metrics_message(desktop)["battery"])
+        laptop = SimpleNamespace(cpu=1.0, gpu=None, gpu_name="", ram=1.0, ram_used=1, ram_total=2, disks=[],
+                                 battery=86.6, plugged=True)
+        self.assertEqual(display_api.metrics_message(laptop)["battery"], {"percent": 87.0, "plugged": True})
+
     def test_source_names(self):
         self.assertEqual(display_api.source_name("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic"), "Медиаплеер")
         self.assertEqual(display_api.source_name("Spotify.exe"), "Spotify")

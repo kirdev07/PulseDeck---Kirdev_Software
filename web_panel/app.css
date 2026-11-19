@@ -76,7 +76,7 @@ a.button { display: block; text-align: center; text-decoration: none; color: var
 #panel { position: relative; display: flex; flex-direction: column; align-items: center;
          min-height: calc(100dvh - 28px); }
 .status { position: absolute; inset: 0 0 auto 0; display: flex; justify-content: space-between; align-items: flex-start; }
-.link-state { display: flex; align-items: center; gap: 8px; margin-top: 10px; max-width: 230px; color: var(--text2);
+.link-state { display: flex; align-items: center; gap: 8px; margin-top: 10px; max-width: 60vw; color: var(--text2);
               font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .state .i { width: 12px; height: 12px; vertical-align: -1px; }
 .dot { width: 7px; height: 7px; border-radius: 50%; border: 1.5px solid var(--text3); flex: none; }
@@ -290,11 +290,30 @@ html[data-theme="light"][data-bg="sand"] { --bg: #f6efe3; }
 html[data-ui-font="rounded"] { --ui-font: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", Roboto, sans-serif; }
 html[data-ui-font="mono"] { --ui-font: ui-monospace, "SF Mono", "Roboto Mono", Menlo, monospace; }
 html[data-ui-font="serif"] { --ui-font: ui-serif, "New York", Georgia, "Noto Serif", serif; }
-html[data-clock-font="rounded"] { --clock-font: ui-rounded, "SF Pro Rounded", "Nunito", "Varela Round", Roboto, sans-serif; }
-html[data-clock-font="mono"] { --clock-font: ui-monospace, "SF Mono", "Roboto Mono", Menlo, monospace; }
+/* Clock fonts: the phone's own, iPhone name first, then Android, then Windows (nothing is downloaded). */
+html[data-clock-font="rounded"] { --clock-font: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Nunito", sans-serif; }
+html[data-clock-font="condensed"] { --clock-font: "Avenir Next Condensed", "sans-serif-condensed", "Roboto Condensed", "Arial Narrow", sans-serif; }
+html[data-clock-font="geometric"] { --clock-font: Futura, "Century Gothic", "Avenir Next", "Product Sans", sans-serif; }
+html[data-clock-font="didot"] { --clock-font: Didot, "Bodoni 72", "Bodoni MT", "Noto Serif Display", serif; }
 html[data-clock-font="serif"] { --clock-font: ui-serif, "New York", Georgia, "Noto Serif", serif; }
-html[data-clock-font="hand"] { --clock-font: "Snell Roundhand", "Segoe Script", "Dancing Script", cursive; }
-html[data-clock-font="mono"] .time { letter-spacing: -.06em; }
+html[data-clock-font="mono"] { --clock-font: ui-monospace, "SF Mono", "Roboto Mono", Menlo, Consolas, monospace; }
+html[data-clock-font="typewriter"] { --clock-font: "American Typewriter", "Cutive Mono", "serif-monospace", "Courier New", monospace; }
+html[data-clock-font="hand"] { --clock-font: "Snell Roundhand", "Dancing Script", "Segoe Script", cursive; }
+html[data-clock-font="marker"] { --clock-font: "Marker Felt", "Chalkboard SE", "Coming Soon", casual, "Comic Sans MS", cursive; }
+html[data-clock-font="mono"] .time, html[data-clock-font="typewriter"] .time { letter-spacing: -.06em; }
+html[data-clock-font="condensed"] .time { font-stretch: condensed; }
+/* Fonts without a thin cut look best a little heavier. */
+html[data-clock-font="didot"], html[data-clock-font="typewriter"], html[data-clock-font="hand"],
+html[data-clock-font="marker"], html[data-clock-font="geometric"] { --clock-weight-floor: 400; }
+.time { font-weight: max(var(--clock-weight), var(--clock-weight-floor, 0)); }
+
+/* font picker: «12:34» in each font */
+.fonts { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.fonts button { background: var(--surface2); color: var(--text); border-radius: 12px; padding: 8px 6px 6px;
+                display: grid; gap: 2px; justify-items: center; border: 2px solid transparent; }
+.fonts button.on { border-color: var(--accent); }
+.fonts .sample { font-size: 26px; line-height: 1.1; }
+.fonts .name { font-size: 10px; color: var(--text2); font-family: var(--ui-font, sans-serif); }
 
 /* idle animation: the canvas size is set by app.js (about the player's width) */
 .wave { width: auto; height: auto; max-width: 100%; flex: none; }
@@ -339,3 +358,7 @@ html[data-idle-size="full"] .center { align-self: stretch; }
 html.no-motion .buddy { display: none; }
 @media (prefers-reduced-motion: reduce) { .buddy { display: none; } }
 .note-text { font-size: 12px; color: var(--text2); line-height: 1.4; }
+/* PC uptime and PC battery next to the PC name (a desktop has no battery: nothing shown) */
+.pc-extra { color: var(--text3); font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.pc-extra::before { content: "·"; margin-right: 4px; }
+.pc-extra.battery .i { width: 20px; height: 20px; }
