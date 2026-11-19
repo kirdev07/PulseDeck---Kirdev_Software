@@ -163,7 +163,7 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
     async def test_view_only_refuses_commands(self):
         ws = await self.client.ws_connect(f"/ws?t={await self.paired()}")
         await ws.send_json({"type": "command", "action": "toggle"})
-        for _ in range(6):
+        for _ in range(20):         # hello, access, metrics, media, sessions, activity … then the error
             msg = await ws.receive_json(timeout=5)
             if msg["type"] == "error":
                 break
