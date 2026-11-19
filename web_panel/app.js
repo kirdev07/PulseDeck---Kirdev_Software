@@ -707,11 +707,13 @@ function tickProgress() {
   startSeekWave();
 }
 
-// ----- the seek bar as on Samsung (One UI / Android media player): the played part is a calm
-// wave that drifts slowly toward the thumb and flattens right before it; the rest is a flat line.
-// On pause the wave calms down to a straight line in half a second. -----
-const WAVE_LENGTH = 24, WAVE_HEIGHT = 2.6, WAVE_SPEED = 9;       // px, px, px per second
-const seekWave = { amp: 0, phase: 0, raf: 0, last: 0 };
+// ----- the seek bar as in the Android / One UI media player (SystemUI «SquigglyProgress»):
+// the played part is a wave of half-wavelength Bézier arcs that drifts slowly and flattens over
+// 1.5 wavelengths around the thumb; the rest is a thin line of the same colour at 30 %.
+// Play: the wave grows in 0.8 s (emphasized decelerate, 60 ms delay); pause: flattens in 0.55 s. -----
+const WAVE_LENGTH = 20, WAVE_HEIGHT = 1.9, WAVE_SPEED = 8, WAVE_STROKE = 2.5;   // px, px, px per second, px
+const WAVE_TAPER = 1.5;                                                         // wavelengths
+const seekWave = { height: 0, phase: 0, raf: 0, last: 0, anim: null, playing: false };
 function seekFraction() {
   const s = state.media, seek = $('seek');
   if (state.seeking || !s || !(s.duration > 0)) return Number(seek.max) > 0 ? Number(seek.value) / Number(seek.max) : 0;
@@ -719,6 +721,17 @@ function seekFraction() {
   if (s.status === 'playing') pos += (performance.now() - state.mediaAt) / 1000;
   return Math.max(0, Math.min(1, pos / s.duration));
 }
+// CSS-like cubic-bezier easing (the Material curves Android uses).
+function bezierEase(x1, y1, x2, y2) {
+  const at = (a, b, t) => 3 * a * t * (1 - t) * (1 - t) + 3 * b * t * t * (1 - t) + t * t * t;
+  return (x) => {
+    let lo = 0, hi = 1, t = x;
+    for (let i = 0; i < 24; i++) { t = (lo + hi) / 2; if (at(x1, x2, t) < x) lo = t; else hi = t; }
+    return at(y1, y2, t);
+  };
+}
+const EMPHASIZED_DECELERATE = bezierEase(0.05, 0.7, 0.1, 1);
+const STANDARD_DECELERATE = bezierEase(0, 0, 0, 1);
 function startSeekWave() {
   if (!seekWave.raf && prefs.waveSeek) seekWave.raf = requestAnimationFrame(drawSeekWave);
 }
@@ -726,45 +739,72 @@ function drawSeekWave(now) {
   seekWave.raf = 0;
   const canvas = $('seekwave');
   const width = canvas.clientWidth, height = canvas.clientHeight;
-  if (!prefs.waveSeek || document.hidden || !width) return;
+  if (!prefs.waveSeek || document.hidden || !width) { seekWave.last = 0; return; }
   const playing = !!state.media && state.media.status === 'playing';
-  const dt = seekWave.last ? Math.min(64, now - seekWave.last) : 16;
+  if (playing !== seekWave.playing) {                     // start the grow / flatten animation
+    seekWave.playing = playing;
+    seekWave.anim = playing
+      ? { from: seekWave.height, to: 1, start: now + 60, duration: 800, ease: EMPHASIZED_DECELERATE }
+      : { from: seekWave.height, to: 0, start: now, duration: 550, ease: STANDARD_DECELERATE };
+  }
+  const anim = seekWave.anim;
+  if (anim) {
+    const t = Math.max(0, Math.min(1, (now - anim.start) / anim.duration));
+    seekWave.height = anim.from + (anim.to - anim.from) * anim.ease(t);
+    if (t >= 1) seekWave.anim = null;
+  }
+  const dt = seekWave.last ? Math.min(64, now - seekWave.last) : 0;
   seekWave.last = now;
-  const target = playing ? 1 : 0, stepAmp = dt / 500;              // 0 ↔ 1 in 0.5 s
-  seekWave.amp = target > seekWave.amp ? Math.min(target, seekWave.amp + stepAmp) : Math.max(target, seekWave.amp - stepAmp);
-  if (prefs.motion) seekWave.phase = (seekWave.phase + dt / 1000 * WAVE_SPEED * Math.PI * 2 / WAVE_LENGTH) % (Math.PI * 2);
+  if (playing && prefs.motion) seekWave.phase = (seekWave.phase + dt / 1000 * WAVE_SPEED) % WAVE_LENGTH;
+
   const ratio = window.devicePixelRatio || 1;
   if (canvas.width !== Math.round(width * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); }
   const c = canvas.getContext('2d');
   c.setTransform(ratio, 0, 0, ratio, 0, 0);
   c.clearRect(0, 0, width, height);
-  const css = getComputedStyle(document.documentElement);
-  const accent = css.getPropertyValue('--accent').trim() || '#fff';
-  const mid = height / 2, eased = seekWave.amp * seekWave.amp * (3 - 2 * seekWave.amp);   // smoothstep
-  const amp = WAVE_HEIGHT * eased;
-  const x = 6 + seekFraction() * (width - 12);          // where the native thumb is (12 px wide)
+  const accent = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
+  const left = 6, span = width - 12;                      // the native thumb travels inside 6 px margins
+  const x = seekFraction() * span;                        // progress in px from `left`
+  c.save();
+  c.translate(left, height / 2);
   c.lineCap = 'round';
-  c.lineJoin = 'round';
-  c.lineWidth = 3;
-  c.strokeStyle = accent;
-  c.beginPath();
-  const end = x - 4;
-  c.moveTo(2, mid);
-  for (let i = 2; i <= end; i += 0.5) {
-    const near = Math.min(1, (end - i) / WAVE_LENGTH, (i - 2) / (WAVE_LENGTH / 2));   // flat at both ends
-    const y = mid + amp * near * Math.sin(i * Math.PI * 2 / WAVE_LENGTH - seekWave.phase);
-    c.lineTo(i, y);
+  c.lineWidth = WAVE_STROKE;
+
+  // The wave: arcs of half a wavelength, amplitude fading from 1 to 0 across the thumb.
+  const taper = WAVE_TAPER * WAVE_LENGTH;
+  const amplitude = (px) => {
+    const k = Math.max(0, Math.min(1, (x + taper / 2 - px) / taper, px / (WAVE_LENGTH / 2)));   // and a flat start
+    return WAVE_HEIGHT * seekWave.height * k;
+  };
+  const path = new Path2D();
+  let start = -seekWave.phase - WAVE_LENGTH / 2, sign = 1;
+  let prevX = start, prevY = sign * amplitude(start);
+  path.moveTo(prevX, prevY);
+  const half = WAVE_LENGTH / 2;
+  while (prevX < span) {
+    sign = -sign;
+    const nextX = prevX + half, nextY = sign * amplitude(nextX), mid = prevX + half / 2;
+    path.bezierCurveTo(mid, prevY, mid, nextY, nextX, nextY);
+    prevX = nextX; prevY = nextY;
   }
-  c.stroke();
-  if (x + 6 < width - 2) {
-    c.strokeStyle = css.getPropertyValue('--track').trim() || '#333';
-    c.beginPath(); c.moveTo(x + 6, mid); c.lineTo(width - 2, mid); c.stroke();
-  }
-  c.fillStyle = accent;                                  // the thumb: a short upright pill
+  c.save();                                               // played part: full colour
+  c.beginPath(); c.rect(0, -height, x, height * 2); c.clip();
+  c.strokeStyle = accent; c.stroke(path);
+  c.restore();
+  c.save();                                               // the rest: same colour at 30 %
+  c.beginPath(); c.rect(x, -height, span - x + 1, height * 2); c.clip();
+  c.globalAlpha = 0.3; c.strokeStyle = accent; c.stroke(path);
+  c.restore();
+  // a round start cap, so the line does not begin with a cut
+  c.fillStyle = accent;
+  c.beginPath(); c.arc(0, 0, WAVE_STROKE / 2, 0, Math.PI * 2); c.fill();
+  // the thumb: a short upright pill
   c.beginPath();
-  if (c.roundRect) c.roundRect(x - 2, mid - 7, 4, 14, 2); else c.rect(x - 2, mid - 7, 4, 14);
+  if (c.roundRect) c.roundRect(x - 2, -8, 4, 16, 2); else c.rect(x - 2, -8, 4, 16);
   c.fill();
-  if (playing || seekWave.amp > 0.01) startSeekWave();
+  c.restore();
+
+  if (playing || seekWave.anim) startSeekWave();
   else seekWave.last = 0;
 }
 
