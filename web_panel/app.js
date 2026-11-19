@@ -25,9 +25,9 @@ const store = {
   drop(key) { try { localStorage.removeItem(key); } catch (e) { /* ignore */ } },
 };
 
-// ----- theme: «Тёмная» (as the panel), «Белая», «Как в системе» -----
+// ----- theme: «Тёмная» (as the panel) or «Белая» -----
 function applyTheme(theme) {
-  theme = ['dark', 'light', 'auto'].includes(theme) ? theme : 'dark';
+  theme = theme === 'light' ? 'light' : 'dark';       // anything else (an old «auto» too) → dark
   document.documentElement.dataset.theme = theme;
   for (const chip of $('themes').children) chip.classList.toggle('on', chip.dataset.theme === theme);
   const background = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#000000';
@@ -441,7 +441,6 @@ function startPanel(code) {
 
 document.addEventListener('DOMContentLoaded', async () => {
   applyTheme(store.get(THEME_STORE) || 'dark');
-  window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => applyTheme(store.get(THEME_STORE) || 'dark'));
   tickClock();
   setInterval(tickClock, 1000);
   setInterval(tickProgress, 1000);

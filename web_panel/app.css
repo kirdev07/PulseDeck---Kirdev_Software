@@ -1,7 +1,7 @@
 /* PulseDeck Panel in the browser — the Android panel (PulseDeck-PanelAPP) one to one.
    Sizes are the panel's dp taken as CSS px (a phone browser has ≈1 px per dp):
    DashboardScreen padding 28/14, ClockBlock 128 thin, CompactPlayer ≤560 wide, MetricsBar 11/9.
-   Landscape = the panel; portrait = the same parts stacked, same small sizes. */
+   Themes: «Тёмная» and «Белая», as the panel. Landscape = the panel; portrait = the same parts stacked, same small sizes. */
 :root, html[data-theme="dark"] {
   --bg: #000000; --surface: #101010; --surface2: #191919; --border: #242424; --track: #292929;
   --text: #ffffff; --text2: #aaaaaa; --text3: #888888; --disabled: #454545;
@@ -11,13 +11,6 @@ html[data-theme="light"] {
   --bg: #ffffff; --surface: #f4f4f5; --surface2: #eaeaec; --border: #e0e0e3; --track: #dddde0;
   --text: #0a0a0a; --text2: #55555a; --text3: #77777c; --disabled: #bdbdc2;
   color-scheme: light;
-}
-@media (prefers-color-scheme: light) {
-  html[data-theme="auto"] {
-    --bg: #ffffff; --surface: #f4f4f5; --surface2: #eaeaec; --border: #e0e0e3; --track: #dddde0;
-    --text: #0a0a0a; --text2: #55555a; --text3: #77777c; --disabled: #bdbdc2;
-    color-scheme: light;
-  }
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
