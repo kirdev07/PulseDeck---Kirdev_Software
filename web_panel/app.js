@@ -53,10 +53,23 @@ const TILES = {
 const DEFAULTS = {
   theme: 'dark', themeByTime: false, dayFrom: '07:00', dayTo: '20:00',
   accent: 'white', clockWeight: 'thin', clockSize: 'm', clock24: true, seconds: false, showDate: true,
-  wave: true, motion: true, pulse: false,
+  bgDark: 'default', bgLight: 'default', clockColor: 'ink', uiFont: 'system', clockFont: 'system',
+  idle: 'wave', buddy: 'none', motion: true, pulse: false,
   layout: 'panel', tiles: ['cpu', 'gpu', 'ram', 'net', 'disk'], tileOrder: Object.keys(TILES), disk: '',
   playerAlways: false, showCover: true, showProgress: true, showVolume: true,
   burnIn: true, offlineClock: true,
+};
+const CLOCK_COLORS = {          // «ink» = the theme's text colour (no override)
+  accent: 'var(--accent)', white: '#ffffff', blue: '#7aa7ff', green: '#5fd99a', purple: '#b896ff',
+  orange: '#ffb066', pink: '#ff8cc6', gold: '#ffd166', red: '#ff7a7a',
+};
+const COLOR_NAMES = { white: 'Белый', blue: 'Голубой', green: 'Зелёный', purple: 'Сиреневый', orange: 'Оранжевый',
+                      pink: 'Розовый', gold: 'Золотой', red: 'Красный' };
+const BACKGROUNDS = {
+  dark: [['default', 'Чёрный', '#000000'], ['graphite', 'Графит', '#121417'], ['midnight', 'Ночь', '#0b1020'],
+         ['forest', 'Лес', '#0a1712'], ['plum', 'Слива', '#170d1c'], ['wine', 'Вино', '#1c0a10'], ['coffee', 'Кофе', '#17110c']],
+  light: [['default', 'Белый', '#ffffff'], ['cream', 'Крем', '#fbf6ec'], ['mint', 'Мята', '#edf8f1'], ['sky', 'Небо', '#edf3ff'],
+          ['lavender', 'Лаванда', '#f3efff'], ['rose', 'Роза', '#fff0f3'], ['sand', 'Песок', '#f6efe3']],
 };
 const prefs = loadPrefs();
 
@@ -66,6 +79,7 @@ function loadPrefs() {
   const result = { ...DEFAULTS, ...saved };
   const old = store.get('pulsedeck.theme');           // before the preferences object
   if (!saved.theme && old) result.theme = old === 'light' ? 'light' : 'dark';
+  if (saved.wave === false && !saved.idle) result.idle = 'none';      // the old «Волна» switch
   result.tiles = (result.tiles || []).filter((t) => TILES[t]);
   result.tileOrder = [...new Set([...(result.tileOrder || []).filter((t) => TILES[t]), ...Object.keys(TILES)])];
   return result;
@@ -92,6 +106,12 @@ function applyPrefs() {
   root.dataset.clockSize = prefs.clockSize;
   root.dataset.clockWeight = prefs.clockWeight;
   root.dataset.layout = prefs.layout;
+  root.dataset.bg = root.dataset.theme === 'light' ? prefs.bgLight : prefs.bgDark;
+  root.dataset.uiFont = prefs.uiFont;
+  root.dataset.clockFont = prefs.clockFont;
+  const clock = CLOCK_COLORS[prefs.clockColor];
+  if (clock) root.style.setProperty('--clock-color', clock); else root.style.removeProperty('--clock-color');
+  $('wave').dataset.kind = prefs.idle;
   root.classList.toggle('no-motion', !prefs.motion);
   root.classList.toggle('pulse', prefs.pulse && prefs.motion);
   root.classList.toggle('hide-cover', !prefs.showCover);
@@ -105,6 +125,7 @@ function applyPrefs() {
   renderMetrics();
   showMedia({ session: state.media, system_volume: state.volume, keepTime: true });
   showSaver();
+  updateBuddy();
 }
 
 function forgetToken(reason) {
@@ -303,6 +324,7 @@ let knownDisks = '';
 function showMetrics(m) {
   state.metrics = m;
   renderMetrics();
+  updateBuddy();
   const disks = (m.disks || []).map((d) => d.name).join();
   if (disks !== knownDisks) {          // «Какой диск» in Настройки lists the PC's disks
     knownDisks = disks;
@@ -317,7 +339,7 @@ function showMedia(msg) {
   const showPlayer = !!s || prefs.playerAlways;
   $('player').hidden = !showPlayer;
   $('player').classList.toggle('playing', !!s && s.status === 'playing');
-  $('wave').hidden = showPlayer || !prefs.wave;
+  $('wave').hidden = showPlayer || prefs.idle === 'none';
   $('title').textContent = s ? s.title : 'Ничего не играет';
   $('artist').textContent = s ? [s.artist, s.album].filter(Boolean).join(' · ') : '';
   $('sourcename').textContent = s ? s.source || '' : '';
@@ -345,6 +367,7 @@ function showMedia(msg) {
   showControls();
   tickProgress();
   if (prefs.tiles.includes('volume')) renderMetrics();
+  updateBuddy();
 }
 
 function showSessions(items) {
@@ -413,35 +436,142 @@ function send(action, value) {
   }
 }
 
-// ----- KiroX Motion: the panel's idle wave (48 steps, sin(i·0.42 − t/135ms)·2.3) -----
-function startWave() {
+// ----- idle animation (nothing plays): «Волна» is KiroX Motion of the panel -----
+const IDLE_SIZES = { wave: [144, 18], pulse: [200, 44], eq: [120, 40], breathe: [64, 64], stars: [240, 60] };
+const STAR_SEEDS = Array.from({ length: 14 }, (_, i) => [((i * 97) % 100) / 100, ((i * 53) % 100) / 100, (i * 0.7) % 6.28]);
+
+function drawIdle(kind, context, width, height, t) {
+  context.beginPath();
+  if (kind === 'wave') {                 // 48 steps, sin(i·0.42 − t/135ms)·2.3, as the panel
+    for (let i = 0; i <= 48; i++) {
+      const x = (i / 48) * width, y = height / 2 + Math.sin(i * 0.42 - t / 135) * 2.3;
+      if (i === 0) context.moveTo(x, y); else context.lineTo(x, y);
+    }
+    context.lineWidth = 1.15;
+    context.stroke();
+  } else if (kind === 'pulse') {        // the heartbeat of the PulseDeck logo, travelling left to right
+    const period = 2200, mid = height / 2;
+    const head = ((t % period) / period) * (width + 60) - 30;
+    context.lineWidth = 1.6;
+    for (let x = 0; x <= width; x += 2) {
+      const d = x - head;
+      let y = mid;
+      if (d > -14 && d < 0) y = mid - Math.sin((-d / 14) * Math.PI) * (height * 0.42) * (d > -7 ? 1 : -0.35);
+      context.globalAlpha = Math.max(0.12, 1 - Math.abs(d) / (width * 0.9));
+      if (x === 0) context.moveTo(x, y); else context.lineTo(x, y);
+    }
+    context.globalAlpha = 1;
+    context.stroke();
+  } else if (kind === 'eq') {           // decorative bars (not real audio levels)
+    const bars = 9, gap = 4, w = (width - gap * (bars - 1)) / bars;
+    for (let i = 0; i < bars; i++) {
+      const h = (0.25 + 0.75 * Math.abs(Math.sin(t / (520 + i * 61) + i * 1.7))) * height;
+      context.roundRect ? context.roundRect(i * (w + gap), height - h, w, h, 2) : context.rect(i * (w + gap), height - h, w, h);
+    }
+    context.fill();
+  } else if (kind === 'breathe') {      // slow breathing circle, 4 s in, 4 s out
+    const k = 0.5 + 0.5 * Math.sin(t / 1273);
+    context.globalAlpha = 0.25 + 0.55 * k;
+    context.arc(width / 2, height / 2, 10 + k * (width / 2 - 14), 0, Math.PI * 2);
+    context.lineWidth = 1.6;
+    context.stroke();
+    context.globalAlpha = 1;
+  } else if (kind === 'stars') {
+    for (const [fx, fy, phase] of STAR_SEEDS) {
+      const a = 0.5 + 0.5 * Math.sin(t / 700 + phase);
+      context.globalAlpha = a;
+      context.beginPath();
+      context.arc(fx * width, fy * height, 0.8 + a * 1.4, 0, Math.PI * 2);
+      context.fill();
+    }
+    context.globalAlpha = 1;
+  }
+}
+
+function startIdle() {
   const canvas = $('wave');
   const context = canvas.getContext('2d');
   let last = 0;
   function frame(now) {
-    if (!canvas.hidden && !document.hidden && now - last > 33) {        // ~30 fps, as the panel
+    const kind = prefs.idle;
+    if (!canvas.hidden && !document.hidden && IDLE_SIZES[kind] && now - last > 33) {     // ~30 fps, as the panel
       last = now;
       const ratio = window.devicePixelRatio || 1;
-      const width = 144, height = 18;
-      if (canvas.width !== width * ratio) { canvas.width = width * ratio; canvas.height = height * ratio; }
+      const [width, height] = IDLE_SIZES[kind];
+      if (canvas.width !== width * ratio || canvas.height !== height * ratio) {
+        canvas.width = width * ratio; canvas.height = height * ratio;
+      }
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, width, height);
-      context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
-      context.lineWidth = 1.15;
+      const ink = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
+      context.strokeStyle = ink;
+      context.fillStyle = ink;
       context.lineCap = 'round';
-      context.beginPath();
+      context.lineJoin = 'round';
       const still = !prefs.motion || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-      const phase = still ? 0 : now / 135;
-      for (let i = 0; i <= 48; i++) {
-        const x = (i / 48) * width;
-        const y = height / 2 + Math.sin(i * 0.42 - phase) * 2.3;
-        if (i === 0) context.moveTo(x, y); else context.lineTo(x, y);
-      }
-      context.stroke();
+      drawIdle(kind, context, width, height, still ? 0 : now);
     }
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+}
+
+// ----- emoji companion: the phone's own emoji, gentle CSS motion -----
+// «Котик» reacts to the real PC: asleep when idle, nods while music plays, panics above 85 % CPU,
+// sad without a connection.
+function catMood() {
+  if (!state.online) return 'sad';
+  if ((state.metrics?.cpu?.load ?? 0) >= 85) return 'hot';
+  if (state.media && state.media.status === 'playing') return 'vibe';
+  return 'sleep';
+}
+const CAT = { sleep: ['😽', '💤'], vibe: ['😸', '🎵'], hot: ['🙀', '🔥'], sad: ['😿', ''] };
+let buddyKind = '';
+function updateBuddy() {
+  const box = $('buddy');
+  const kind = $('panel').hidden ? 'none' : prefs.buddy;
+  box.hidden = kind === 'none';
+  if (kind === 'none') { box.replaceChildren(); buddyKind = ''; return; }
+  if (kind === 'cat') {
+    const mood = catMood();
+    if (buddyKind !== `cat:${mood}`) {
+      buddyKind = `cat:${mood}`;
+      box.className = `buddy cat ${mood}`;
+      const [face, extra] = CAT[mood];
+      box.replaceChildren(el('span', { class: 'b face', text: face }),
+        extra ? el('span', { class: 'b extra', text: extra }) : null,
+        extra ? el('span', { class: 'b extra second', text: extra }) : null);
+    }
+    return;
+  }
+  if (buddyKind === kind) return;
+  buddyKind = kind;
+  box.className = `buddy ${{ walk: 'walk', snow: 'rain', hearts: 'hearts', sparkle: 'sparkle' }[kind]}`;
+  const items = [];
+  if (kind === 'walk') items.push(el('span', { class: 'b', text: '🐈' }));
+  if (kind === 'snow') for (let i = 0; i < 9; i++) {
+    const flake = el('span', { class: 'b', text: i % 3 ? '❄️' : '·' });
+    flake.style.left = `${(i * 11 + 4) % 100}%`;
+    flake.style.animationDuration = `${14 + (i * 7) % 11}s`;
+    flake.style.animationDelay = `${-(i * 2.3)}s`;
+    flake.style.fontSize = `${12 + (i * 5) % 12}px`;
+    items.push(flake);
+  }
+  if (kind === 'hearts') for (let i = 0; i < 5; i++) {
+    const heart = el('span', { class: 'b', text: ['💖', '💗', '💕', '💞', '💓'][i] });
+    heart.style.left = `${55 + i * 8}%`;
+    heart.style.animationDelay = `${i * 1.9}s`;
+    heart.style.animationDuration = `${8 + i}s`;
+    items.push(heart);
+  }
+  if (kind === 'sparkle') for (let i = 0; i < 8; i++) {
+    const star = el('span', { class: 'b', text: '✨' });
+    star.style.left = `${30 + ((i * 37) % 40)}%`;
+    star.style.top = `${4 + ((i * 23) % 30)}%`;
+    star.style.animationDelay = `${i * 0.45}s`;
+    items.push(star);
+  }
+  box.replaceChildren(...items);
 }
 
 // ----- AMOLED burn-in protection: shift the whole screen a few px every two minutes -----
@@ -458,6 +588,7 @@ function setStatus(online) {
   state.online = online;
   $('dot').classList.toggle('on', online);
   showSaver();
+  updateBuddy();
 }
 
 // Without a connection: the clock screensaver (Настройки → Экран) or the «Нет связи» overlay.
@@ -598,6 +729,8 @@ function set(key, value) {
   applyPrefs();
   buildSettings();
 }
+const FONTS = [['system', 'Системный'], ['rounded', 'Округлый'], ['mono', 'Моноширинный'], ['serif', 'С засечками'],
+               ['hand', 'Рукописный']];
 function chips(key, options, swatch) {
   return el('div', { class: 'chips' }, ...options.map(([value, label, color]) => {
     const button = el('button', { type: 'button', class: (swatch ? 'swatch ' : '') + (prefs[key] === value ? 'on' : ''),
@@ -628,6 +761,15 @@ function buildSettings() {
     pref('Цвет акцента', chips('accent', [['white', 'Как текст', accentInk], ['blue', 'Синий', '#4c8dff'],
       ['green', 'Зелёный', '#34c77b'], ['purple', 'Фиолетовый', '#a679ff'], ['orange', 'Оранжевый', '#ff9f43'],
       ['red', 'Красный', '#ff5c5c'], ['pink', 'Розовый', '#ff6fb5']], true)),
+    currentTheme() === 'light'
+      ? pref('Фон (белая тема)', chips('bgLight', BACKGROUNDS.light, true))
+      : pref('Фон (тёмная тема)', chips('bgDark', BACKGROUNDS.dark, true)),
+    pref('Цвет часов', chips('clockColor', [['ink', 'Как текст', accentInk], ['accent', 'Как акцент', 'var(--accent)'],
+      ...Object.entries(CLOCK_COLORS).filter(([k]) => k !== 'accent').map(([k, v]) => [k, COLOR_NAMES[k] || k, v])], true)),
+
+    el('h3', { text: 'Шрифты' }),
+    pref('Интерфейс', chips('uiFont', FONTS.filter(([k]) => k !== 'hand'))),
+    pref('Часы', chips('clockFont', FONTS)),
 
     el('h3', { text: 'Раскладка' }),
     chips('layout', [['panel', 'Panel'], ['clock', 'Часы'], ['music', 'Музыка'], ['monitoring', 'Мониторинг']]),
@@ -653,8 +795,13 @@ function buildSettings() {
     toggle('showVolume', 'Громкость ПК'),
 
     el('h3', { text: 'Анимации' }),
-    toggle('motion', 'Плавные переходы'),
-    toggle('wave', 'Волна, когда ничего не играет'),
+    pref('Когда ничего не играет', chips('idle', [['wave', 'Волна'], ['pulse', 'Пульс'], ['eq', 'Эквалайзер'],
+      ['breathe', 'Дыхание'], ['stars', 'Звёздочки'], ['none', 'Нет']])),
+    pref('Компаньон', chips('buddy', [['none', 'Нет'], ['cat', '🐱 Котик с настроением'], ['walk', '🐈 Котик гуляет'],
+      ['hearts', '💖 Сердечки'], ['snow', '❄️ Снегопад'], ['sparkle', '✨ Звёздочки']])),
+    prefs.buddy === 'cat' ? el('div', { class: 'note-text',
+      text: 'Спит 😽, когда ничего не происходит; качает головой 😸 под музыку; паникует 🙀, если процессор загружен больше 85 %; грустит 😿 без связи с ПК.' }) : null,
+    toggle('motion', 'Плавные переходы и анимации'),
     toggle('pulse', 'Обложка пульсирует, пока играет'),
 
     el('h3', { text: 'Экран' }),
@@ -703,7 +850,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   buildSettings();
   setInterval(tickClock, 1000);
   setInterval(tickProgress, 1000);
-  startWave();
+  startIdle();
   startBurnIn();
   startBattery();
   showSecureInfo();
