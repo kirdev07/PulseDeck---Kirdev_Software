@@ -1,4 +1,4 @@
-// PulseDeck Panel in the browser.
+// PulseDeck Panel in the browser — the screen of the Android panel (PulseDeck-PanelAPP).
 //
 // Start: on plain HTTP the page asks the PC for its HTTPS port (/info) and checks whether this
 // phone already trusts the PC's home certificate; if yes it moves to https://…, otherwise it
@@ -10,11 +10,13 @@
 
 const TOKEN_STORE = 'pulsedeck.token';
 const SKIP_STORE = 'pulsedeck.insecure';
+const THEME_STORE = 'pulsedeck.theme';
 const $ = (id) => document.getElementById(id);
 const state = {
   token: '', ws: null, retry: 0, control: false, secure: location.protocol === 'https:', reason: '',
-  media: null, mediaAt: 0, coverKey: '', seeking: false, volumeBusy: 0, httpsPort: 0,
+  media: null, mediaAt: 0, coverKey: '', seeking: false, volumeBusy: -1e9, httpsPort: 0,
 };
+let pendingCode = '';        // pairing code from the QR, kept while the user installs the certificate
 
 // ----- storage -----
 const store = {
@@ -23,6 +25,15 @@ const store = {
   drop(key) { try { localStorage.removeItem(key); } catch (e) { /* ignore */ } },
 };
 
+// ----- theme: «Тёмная» (as the panel), «Белая», «Как в системе» -----
+function applyTheme(theme) {
+  theme = ['dark', 'light', 'auto'].includes(theme) ? theme : 'dark';
+  document.documentElement.dataset.theme = theme;
+  for (const chip of $('themes').children) chip.classList.toggle('on', chip.dataset.theme === theme);
+  const background = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || '#000000';
+  document.querySelector('meta[name="theme-color"]').setAttribute('content', background);
+}
+
 function forgetToken(reason) {
   store.drop(TOKEN_STORE);
   state.token = '';
@@ -30,7 +41,7 @@ function forgetToken(reason) {
   showPairing(reason);
 }
 
-// «Браузер (iPhone)», «Браузер (Android)» … — the name shown in «Телефон» on the PC.
+// «Браузер (iPhone)», «PulseDeck (iPhone, экран Домой)» … — the name shown in «Телефон» on the PC.
 function deviceName() {
   const ua = navigator.userAgent;
   const where = /iPad/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1) ? 'iPad'
@@ -60,8 +71,6 @@ async function httpsTrusted(port) {
     return false;
   }
 }
-
-let pendingCode = '';        // pairing code from the QR, kept while the user installs the certificate
 
 function goSecure() {
   const hash = pendingCode ? `#pair=${encodeURIComponent(pendingCode)}` : '';
@@ -112,7 +121,7 @@ async function pair(code) {
     only('panel');
     connect();
   } catch (e) {
-    showPairing(e.message === 'Failed to fetch' || e.name === 'TypeError' ? 'Нет связи с ПК. Телефон в той же сети Wi-Fi?' : e.message);
+    showPairing(e.name === 'TypeError' ? 'Нет связи с ПК. Телефон в той же сети Wi-Fi?' : e.message);
   } finally {
     $('pairbtn').disabled = false;
     $('pairbtn').textContent = 'Подключить';
@@ -120,26 +129,24 @@ async function pair(code) {
 }
 
 // ----- formatting -----
-const pct = (v) => (v == null ? '—' : Math.round(v));
+const pct = (v) => (v == null ? '—' : `${Math.round(v)}%`);
 function bytes(v) {
   if (v == null) return '—';
-  const units = ['Б', 'КБ', 'МБ', 'ГБ', 'ТБ'];
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let i = 0;
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
-  return (v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)).toString().replace('.', ',') + ' ' + units[i];
+  return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${units[i]}`;
 }
-const speed = (v) => (v == null ? '—' : bytes(v) + '/с');
-function uptime(sec) {
-  if (sec == null) return '—';
-  const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
-  return d ? `${d} д ${h} ч` : h ? `${h} ч ${m} мин` : `${m} мин`;
-}
+const speed = (v) => (v == null ? '—' : `${bytes(v)}/s`);
 function clockTime(sec) {
   sec = Math.max(0, Math.floor(sec || 0));
   const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = String(sec % 60).padStart(2, '0');
   return h ? `${h}:${String(m).padStart(2, '0')}:${s}` : `${m}:${s}`;
 }
 const setBar = (el, value) => { el.style.width = (value == null ? 0 : Math.min(100, Math.max(0, value))) + '%'; };
+const shortCpu = (name) => (name || '').replace(/\(R\)|\(TM\)|CPU|Processor|@.*$/gi, '').replace(/\s+/g, ' ')
+  .replace(/^\d+th Gen /i, '').trim();
+const shortGpu = (name) => (name || '').replace(/NVIDIA |GeForce |AMD |Radeon\(TM\) |Laptop GPU|\d+GB/gi, '').replace(/\s+/g, ' ').trim();
 
 function tickClock() {
   const now = new Date();
@@ -147,50 +154,29 @@ function tickClock() {
   $('date').textContent = now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
 }
 
-// ----- metrics -----
-function tile(id, load, sub) {
+// ----- metrics (the panel's bottom row) -----
+function metric(id, value, sub, bar) {
   const el = $(id);
-  el.querySelector('.num').textContent = pct(load);
-  setBar(el.querySelector('.bar i'), load);
+  el.querySelector('.head .num').textContent = value;
   el.querySelector('.sub').textContent = sub || '—';
+  const fill = el.querySelector('.bar i');
+  if (fill) setBar(fill, bar);
 }
 
 function showMetrics(m) {
-  tile('cpu', m.cpu.load, m.cpu.name || (m.cpu.cores ? `${m.cpu.cores} потоков` : ''));
-  tile('ram', m.ram.percent, m.ram.used != null && m.ram.total ? `${bytes(m.ram.used)} из ${bytes(m.ram.total)}` : '');
-  let gpuSub = m.gpu.name || '';
-  if (m.gpu.memory_total && m.gpu.memory_used != null) gpuSub += ` · ${bytes(m.gpu.memory_used)} / ${bytes(m.gpu.memory_total)}`;
-  tile('gpu', m.gpu.load, gpuSub);
-
-  const cores = $('cpu').querySelector('.cores');
-  const list = m.cpu.per_core || [];
-  if (cores.children.length !== list.length) cores.replaceChildren(...list.map(() => document.createElement('i')));
-  list.forEach((v, i) => { cores.children[i].style.height = Math.max(3, (v || 0) * 0.32) + 'px'; });
-
-  $('down').textContent = speed(m.net.down);
-  $('up').textContent = speed(m.net.up);
-  $('uptime').textContent = uptime(m.uptime);
-
-  const disks = $('disks');
-  disks.replaceChildren(...(m.disks || []).map((d) => {
-    const used = d.total ? 100 * (d.total - d.free) / d.total : null;
-    const row = document.createElement('div');
-    const head = document.createElement('div');
-    head.className = 'disk-head';
-    const name = document.createElement('span');
-    name.textContent = d.label ? `${d.name} ${d.label}` : d.name;
-    const free = document.createElement('span');
-    free.textContent = `свободно ${bytes(d.free)} из ${bytes(d.total)}`;
-    head.append(name, free);
-    const bar = document.createElement('div');
-    bar.className = 'bar';
-    const fill = document.createElement('i');
-    bar.append(fill);
-    setBar(fill, used);
-    row.append(head, bar);
-    return row;
-  }));
-  if (!m.disks || !m.disks.length) disks.textContent = '—';
+  metric('m-cpu', pct(m.cpu.load), shortCpu(m.cpu.name) || (m.cpu.cores ? `${m.cpu.cores} потоков` : ''), m.cpu.load);
+  const vram = m.gpu.memory_total ? ` · ${bytes(m.gpu.memory_total)}` : '';
+  metric('m-gpu', pct(m.gpu.load), (shortGpu(m.gpu.name) || '') + vram, m.gpu.load);
+  metric('m-ram', pct(m.ram.percent), m.ram.used != null && m.ram.total ? `${bytes(m.ram.used)} / ${bytes(m.ram.total)}` : '', m.ram.percent);
+  $('down').textContent = `↓${speed(m.net.down)}`;
+  $('up').textContent = `↑ ${speed(m.net.up)}`;
+  const disk = (m.disks || [])[0];
+  if (disk) {
+    $('diskname').textContent = disk.name;
+    $('diskfree').textContent = bytes(disk.free);
+    $('disksub').textContent = `свободно из ${bytes(disk.total)}`;
+    setBar($('diskbar'), disk.total ? 100 * (disk.total - disk.free) / disk.total : null);
+  }
 }
 
 // ----- media -----
@@ -198,10 +184,14 @@ function showMedia(msg) {
   const s = msg.session;
   state.media = s;
   state.mediaAt = performance.now();
-  $('title').textContent = s ? s.title : 'Ничего не играет';
-  $('artist').textContent = s ? [s.artist, s.album].filter(Boolean).join(' · ') : '';
-  $('source').textContent = s ? (s.status === 'playing' ? 'Играет' : 'Пауза') + (s.source ? ' · ' + s.source : '') : 'Сейчас играет';
-  $('progress').hidden = !(s && s.duration > 0);
+  $('player').hidden = !s;
+  $('wave').hidden = !!s;
+  if (s) {
+    $('title').textContent = s.title;
+    $('artist').textContent = [s.artist, s.album].filter(Boolean).join(' · ');
+    $('sourcename').textContent = s.source || '';
+    $('progress').hidden = !(s.duration > 0);
+  }
   const coverKey = s && s.cover ? s.cover : '';
   if (coverKey !== state.coverKey) {
     state.coverKey = coverKey;
@@ -219,7 +209,7 @@ function showMedia(msg) {
   $('volumerow').hidden = !vol;
   if (vol && performance.now() - state.volumeBusy > 1500) {      // not while the finger moves the slider
     $('volume').value = vol.level;
-    $('volumevalue').textContent = vol.muted ? 'без звука' : `${vol.level}%`;
+    $('volumevalue').textContent = vol.muted ? '0' : String(vol.level);
   }
   showControls();
   tickProgress();
@@ -240,26 +230,37 @@ function showSessions(items) {
 
 function showControls() {
   const s = state.media;
-  $('controls').hidden = !(s && state.control);
-  $('playbtn').textContent = s && s.status === 'playing' ? '⏸' : '▶';
-  $('playbtn').setAttribute('aria-label', s && s.status === 'playing' ? 'Пауза' : 'Играть');
+  for (const button of $('controls').querySelectorAll('button')) button.disabled = !state.control;
+  const playing = s && s.status === 'playing';
+  $('playicon').setAttribute('href', playing ? '#i-pause' : '#i-play');
+  $('playbtn').setAttribute('aria-label', playing ? 'Пауза' : 'Играть');
   $('seek').disabled = !state.control;
   $('volume').disabled = !state.control;
   const hint = $('accesshint');
-  if (state.control) {
-    hint.hidden = true;
-  } else if (state.reason === 'view') {
-    hint.hidden = false;
-    hint.textContent = 'Только просмотр. Чтобы управлять музыкой, на ПК: «Телефон» → «Подключённые устройства» → «Доступ» → «Полный».';
-  } else if (state.reason === 'insecure') {
-    hint.hidden = false;
-    hint.textContent = state.secure
-      ? 'Этот телефон подключён без шифрования. Чтобы управлять музыкой, на ПК отзовите его и подключите снова — уже в защищённом режиме.'
-      : 'Управление музыкой — только в защищённом режиме (HTTPS). Нажмите, чтобы настроить.';
-    hint.onclick = state.secure ? null : () => { store.drop(SKIP_STORE); showSetup(); };
-  } else {
-    hint.hidden = true;
+  let text = '';
+  if (!state.control && state.reason === 'view') {
+    text = 'Только просмотр. Чтобы управлять музыкой, на ПК: «Телефон» → «Подключённые устройства» → «Доступ» → «Полный».';
+  } else if (!state.control && state.reason === 'insecure') {
+    text = state.secure
+      ? 'Этот телефон подключён без шифрования. Чтобы управлять музыкой, на ПК нажмите «Отозвать» и подключите его снова.'
+      : 'Управление музыкой — в защищённом режиме. Нажмите, чтобы настроить.';
   }
+  hint.hidden = !text || !s;
+  hint.textContent = text;
+  hint.onclick = !state.control && state.reason === 'insecure' && !state.secure
+    ? () => { store.drop(SKIP_STORE); showSetup(); } : null;
+  showSecureInfo();
+}
+
+function showSecureInfo() {
+  const info = $('secureinfo');
+  const lock = '<svg class="i"><use href="#i-lock"/></svg>';
+  const text = state.secure
+    ? (state.control ? 'Защищённое соединение (HTTPS). Управление музыкой разрешено.' : 'Защищённое соединение (HTTPS). Только просмотр — «Полный» включается на ПК.')
+    : 'Без шифрования (HTTP): только просмотр. Для управления установите сертификат ПК.';
+  info.innerHTML = (state.secure ? lock : '') + '<span></span>';
+  info.querySelector('span').textContent = text;
+  $('state').innerHTML = state.secure ? lock : '';
 }
 
 function tickProgress() {
@@ -280,14 +281,40 @@ function send(action, value) {
   }
 }
 
-// ----- connection -----
-function setStatus(text, online) {
-  $('state').textContent = text;
-  $('dot').classList.toggle('on', online);
+// ----- KiroX Motion: the panel's idle wave (48 steps, sin(i·0.42 − t/135ms)·2.3) -----
+function startWave() {
+  const canvas = $('wave');
+  const context = canvas.getContext('2d');
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let last = 0;
+  function frame(now) {
+    if (!canvas.hidden && !document.hidden && now - last > 33) {        // ~30 fps, as the panel
+      last = now;
+      const ratio = window.devicePixelRatio || 1;
+      const width = 144, height = 18;
+      if (canvas.width !== width * ratio) { canvas.width = width * ratio; canvas.height = height * ratio; }
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, width, height);
+      context.strokeStyle = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#fff';
+      context.lineWidth = 1.15;
+      context.lineCap = 'round';
+      context.beginPath();
+      const phase = still ? 0 : now / 135;
+      for (let i = 0; i <= 48; i++) {
+        const x = (i / 48) * width;
+        const y = height / 2 + Math.sin(i * 0.42 - phase) * 2.3;
+        if (i === 0) context.moveTo(x, y); else context.lineTo(x, y);
+      }
+      context.stroke();
+    }
+    if (!still) requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
 }
 
-function statusText() {
-  return (state.control ? 'Подключено · управление' : 'Подключено · просмотр') + (state.secure ? ' · 🔒' : '');
+// ----- connection -----
+function setStatus(online) {
+  $('dot').classList.toggle('on', online);
 }
 
 function connect() {
@@ -303,10 +330,10 @@ function connect() {
     if (msg.type === 'hello') {
       $('pcname').textContent = msg.name || 'ПК';
       only('panel');
+      setStatus(true);
     } else if (msg.type === 'access') {
       state.control = !!msg.control;
       state.reason = msg.reason || '';
-      setStatus(statusText(), true);
       showControls();
     } else if (msg.type === 'metrics') {
       showMetrics(msg);
@@ -315,7 +342,7 @@ function connect() {
     } else if (msg.type === 'sessions') {
       showSessions(msg.items || []);
     } else if (msg.type === 'error') {
-      flash(msg.message || 'Ошибка');
+      toast(msg.message || 'Ошибка');
     }
   };
   ws.onclose = (event) => {
@@ -337,7 +364,7 @@ function connect() {
 
 function scheduleReconnect() {
   if (!state.token) return;
-  setStatus('Нет связи', false);
+  setStatus(false);
   if (!$('panel').hidden) {
     $('offline').hidden = false;
     $('offline-text').textContent = 'Переподключаюсь… Проверьте, что PulseDeck запущен, а телефон в той же сети Wi-Fi.';
@@ -346,11 +373,13 @@ function scheduleReconnect() {
   setTimeout(() => { if (!state.ws && state.token) connect(); }, delay);
 }
 
-let flashTimer = 0;
-function flash(text) {
-  $('message').textContent = text;
-  clearTimeout(flashTimer);
-  flashTimer = setTimeout(() => { $('message').textContent = ''; }, 4000);
+let toastTimer = 0;
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.hidden = true; }, 3500);
 }
 
 // ----- keep the screen on (Wake Lock: HTTPS only; Chrome, Safari 16.4+) -----
@@ -360,20 +389,21 @@ async function keepAwake(on) {
   try {
     if (on && 'wakeLock' in navigator) {
       wakeLock = await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release', () => { wakeLock = null; updateAwakeButton(); });
+      wakeLock.addEventListener('release', () => { wakeLock = null; updateAwake(); });
     } else if (wakeLock) {
       await wakeLock.release();
       wakeLock = null;
     }
   } catch (e) {
-    flash('Браузер не разрешил держать экран включённым.');
+    toast('Браузер не разрешил держать экран включённым.');
   }
-  updateAwakeButton();
+  updateAwake();
 }
-function updateAwakeButton() {
+function updateAwake() {
   const button = $('awake');
-  if (!('wakeLock' in navigator)) { button.hidden = true; return; }
-  button.textContent = wakeLock ? 'Экран не гаснет ✓' : 'Не гасить экран';
+  button.disabled = !('wakeLock' in navigator);
+  button.setAttribute('aria-checked', wakeLock ? 'true' : 'false');
+  button.title = button.disabled ? 'Доступно только в защищённом режиме (HTTPS)' : '';
 }
 
 // ----- start -----
@@ -391,9 +421,14 @@ function startPanel(code) {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
+  applyTheme(store.get(THEME_STORE) || 'dark');
+  window.matchMedia('(prefers-color-scheme: light)').addEventListener?.('change', () => applyTheme(store.get(THEME_STORE) || 'dark'));
   tickClock();
   setInterval(tickClock, 1000);
   setInterval(tickProgress, 1000);
+  startWave();
+  showSecureInfo();
+
   $('controls').addEventListener('click', (event) => {
     const cmd = event.target.closest('button')?.dataset.cmd;
     if (cmd) send(cmd);
@@ -406,24 +441,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (state.media) { state.media.position = Number(seek.value); state.mediaAt = performance.now(); }
   });
   const volume = $('volume');
-  volume.addEventListener('input', () => { state.volumeBusy = performance.now(); $('volumevalue').textContent = `${volume.value}%`; });
+  volume.addEventListener('input', () => { state.volumeBusy = performance.now(); $('volumevalue').textContent = volume.value; });
   volume.addEventListener('change', () => { state.volumeBusy = performance.now(); send('volume', Number(volume.value)); });
+
+  // settings sheet
+  $('open-settings').addEventListener('click', () => { $('sheet').hidden = false; });
+  $('close-settings').addEventListener('click', () => { $('sheet').hidden = true; });
+  $('sheet').addEventListener('click', (event) => { if (event.target === $('sheet')) $('sheet').hidden = true; });
+  $('themes').addEventListener('click', (event) => {
+    const theme = event.target.closest('button')?.dataset.theme;
+    if (theme) { store.set(THEME_STORE, theme); applyTheme(theme); }
+  });
   $('source').addEventListener('change', () => send('source', $('source').value));
   $('awake').addEventListener('click', () => { wantAwake = !wakeLock; keepAwake(wantAwake); });
-  updateAwakeButton();
+  updateAwake();
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && wantAwake && wakeLock === null) keepAwake(true);
   });
+  $('forget').addEventListener('click', () => {
+    $('sheet').hidden = true;
+    forgetToken('Телефон отключён на этом устройстве. Удалите его и на ПК: «Телефон» → «Отозвать».');
+  });
+
+  // pairing and secure mode
   $('codeinput').addEventListener('input', (event) => {
     const digits = event.target.value.replace(/\D/g, '').slice(0, 6);
     event.target.value = digits.length > 3 ? `${digits.slice(0, 3)} ${digits.slice(3)}` : digits;
   });
   $('pairform').addEventListener('submit', (event) => { event.preventDefault(); pair($('codeinput').value); });
   $('check-https').addEventListener('click', () => checkSecure(true));
-  $('skip-https').addEventListener('click', () => {
-    store.set(SKIP_STORE, '1');
-    startPanel(pendingCode);
-  });
+  $('skip-https').addEventListener('click', () => { store.set(SKIP_STORE, '1'); startPanel(pendingCode); });
 
   // QR code from the PC: …/#pair=123456 — used once, then removed from the address bar.
   pendingCode = new URLSearchParams(location.hash.slice(1)).get('pair') || '';
@@ -437,8 +484,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (state.httpsPort && await httpsTrusted(state.httpsPort)) { goSecure(); return; }
     if (pendingCode) history.replaceState(null, '', location.pathname);
     if (state.httpsPort && !store.get(SKIP_STORE) && !store.get(TOKEN_STORE)) {
-      // New phone: offer the secure mode first; the code waits until the user decides.
-      showSetup();
+      showSetup();          // new phone: offer the secure mode first; the code waits
       return;
     }
     startPanel(pendingCode);
