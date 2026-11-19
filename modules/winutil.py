@@ -37,6 +37,51 @@ def bring_to_front(hwnd):
         raise ValueError("Windows не разрешила показать окно (ПК заблокирован или окно закрыто).") from exc
 
 
+_names = {}
+
+
+def _app_name(path):
+    """«Google Chrome» from the exe's version info (as Task Manager shows it), else the file name."""
+    if path in _names:
+        return _names[path]
+    import os
+    name = os.path.splitext(os.path.basename(path))[0]
+    try:
+        import win32api
+        lang, page = win32api.GetFileVersionInfo(path, "\\VarFileInfo\\Translation")[0]
+        described = win32api.GetFileVersionInfo(path, f"\\StringFileInfo\\{lang:04x}{page:04x}\\FileDescription")
+        if described and described.strip():
+            name = described.strip()
+    except Exception:  # noqa: BLE001 - no version info (many games): the file name
+        pass
+    _names[path] = name
+    return name
+
+
+def foreground_activity():
+    """What is in front on the PC: {'app', 'title', 'fullscreen'} or None (desktop / nothing / locked)."""
+    import win32api
+    import win32con
+    import win32gui
+    import win32process
+
+    hwnd = win32gui.GetForegroundWindow()
+    if not hwnd or win32gui.GetClassName(hwnd) in ("Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd"):
+        return None
+    _, pid = win32process.GetWindowThreadProcessId(hwnd)
+    try:
+        import psutil
+        path = psutil.Process(pid).exe()
+    except Exception:  # noqa: BLE001 - a protected process
+        path = ""
+    if path.lower().endswith(("lockapp.exe", "logonui.exe")):
+        return None
+    left, top, right, bottom = win32gui.GetWindowRect(hwnd)
+    monitor = win32api.GetMonitorInfo(win32api.MonitorFromWindow(hwnd, win32con.MONITOR_DEFAULTTONEAREST))["Monitor"]
+    fullscreen = (left, top, right, bottom) == tuple(monitor) and not win32gui.GetWindowLong(hwnd, win32con.GWL_STYLE) & win32con.WS_CAPTION
+    return {"app": _app_name(path) if path else "", "title": win32gui.GetWindowText(hwnd)[:120], "fullscreen": bool(fullscreen)}
+
+
 def close_foreground_window():
     """Close the active window like Alt+F4, but without key injection (and never the desktop/taskbar,
     where Alt+F4 would open the Windows shutdown dialog). Returns the title of the closed window."""

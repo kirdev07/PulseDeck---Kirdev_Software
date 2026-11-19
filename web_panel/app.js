@@ -58,6 +58,7 @@ const DEFAULTS = {
   layout: 'panel', tiles: ['cpu', 'gpu', 'ram', 'net', 'disk'], tileOrder: Object.keys(TILES), disk: '',
   playerAlways: false, showCover: true, showProgress: true, showVolume: true, sparks: true, tileRows: 'wrap',
   alerts: true, notify: false, push: false, alertOffline: true,
+  liveSound: true, liveStyle: 'wave', coverColors: true, coverBackdrop: false, gestures: true, showActivity: true,
   limits: { cpu: 90, gpu: 90, ram: 90, vram: 95, disk: 10, battery: 20 },
   burnIn: true, offlineClock: true,
 };
@@ -124,6 +125,10 @@ function applyPrefs() {
   root.classList.toggle('hide-cover', !prefs.showCover);
   root.classList.toggle('hide-progress', !prefs.showProgress);
   root.classList.toggle('hide-volume', !prefs.showVolume);
+  root.classList.toggle('gestures', prefs.gestures);
+  applyCoverColor();
+  subscribeLevels();
+  if (state.activity) showActivity(state.activity);
   $('date').hidden = !prefs.showDate;
   const background = getComputedStyle(root).getPropertyValue('--bg').trim() || '#000000';
   document.querySelector('meta[name="theme-color"]').setAttribute('content', background);
@@ -322,7 +327,8 @@ function tickClock() {
     sec.textContent = String(now.getSeconds()).padStart(2, '0');
     time.append(sec);
   }
-  $('date').textContent = now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+  const date = now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' });
+  $('date').textContent = date.charAt(0).toUpperCase() + date.slice(1);
   if (prefs.themeByTime && document.documentElement.dataset.theme !== currentTheme()) applyPrefs();
 }
 
@@ -617,7 +623,7 @@ function showMedia(msg) {
     state.coverKey = coverKey;
     const img = $('coverimg');
     if (coverKey) {
-      img.onload = () => { img.hidden = false; };
+      img.onload = () => { img.hidden = false; takeCoverColor(img); };
       img.onerror = () => { img.hidden = true; };
       img.src = `cover?key=${encodeURIComponent(coverKey)}&t=${encodeURIComponent(state.token)}`;
     } else {
@@ -635,6 +641,8 @@ function showMedia(msg) {
   showControls();
   tickProgress();
   if (prefs.tiles.includes('volume')) renderMetrics();
+  if (!coverKey) { coverColor = ''; applyCoverColor(); }
+  subscribeLevels();
 }
 
 function showSessions(items) {
@@ -1141,6 +1149,189 @@ function startIdle() {
   requestAnimationFrame(frame);
 }
 
+// ----- live sound: real left/right peak levels of the PC (Windows peak meter), ~20 per second -----
+let levelsWanted = null;
+const live = { l: 0, r: 0, peakL: 0, peakR: 0, history: [], at: 0 };
+function subscribeLevels() {
+  const want = prefs.liveSound && !!state.media && state.media.status === 'playing' && !document.hidden;
+  $('live').hidden = !want || prefs.liveStyle === 'glow';
+  if (!want) $('player').style.boxShadow = '';
+  if (want === levelsWanted || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+  levelsWanted = want;
+  state.ws.send(JSON.stringify({ type: 'subscribe', levels: want }));
+}
+// Loudness feels logarithmic: a square root makes quiet music still move.
+const loud = (v) => Math.min(1, Math.sqrt(Math.max(0, v || 0)) * 1.15);
+function onLevel(l, r) {
+  const a = loud(l), b = loud(r);
+  live.l = a > live.l ? a : live.l * 0.82 + a * 0.18;          // fast attack, slow release
+  live.r = b > live.r ? b : live.r * 0.82 + b * 0.18;
+  live.peakL = Math.max(live.l, live.peakL - 0.012);
+  live.peakR = Math.max(live.r, live.peakR - 0.012);
+  live.history.push((live.l + live.r) / 2);
+  if (live.history.length > 160) live.history.shift();
+  const glow = Math.round(6 + 26 * Math.max(live.l, live.r));
+  const tone = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
+  $('player').style.boxShadow = `0 0 ${glow}px ${Math.round(glow / 4)}px ${rgba(tone, 0.12 + 0.3 * Math.max(live.l, live.r))}`;
+  if (!$('live').hidden) drawLive();
+}
+function drawLive() {
+  const canvas = $('live');
+  const ratio = window.devicePixelRatio || 1;
+  const width = canvas.clientWidth, height = canvas.clientHeight;
+  if (!width) return;
+  if (canvas.width !== Math.round(width * ratio)) { canvas.width = Math.round(width * ratio); canvas.height = Math.round(height * ratio); }
+  const c = canvas.getContext('2d');
+  c.setTransform(ratio, 0, 0, ratio, 0, 0);
+  c.clearRect(0, 0, width, height);
+  const ink = getComputedStyle(document.documentElement).getPropertyValue('--accent').trim() || '#fff';
+  c.fillStyle = ink;
+  const mid = height / 2;
+  if (prefs.liveStyle === 'meter') {              // stereo meter: L above, R below, with peak marks
+    const bars = Math.floor(width / 7);
+    [[live.l, live.peakL, 0], [live.r, live.peakR, mid + 2]].forEach(([value, peak, y]) => {
+      for (let i = 0; i < bars; i++) {
+        const lit = i / bars < value;
+        c.globalAlpha = lit ? 0.35 + 0.65 * (i / bars) : 0.1;
+        c.fillRect(i * 7, y, 5, mid - 3);
+      }
+      c.globalAlpha = 1;
+      c.fillRect(Math.min(width - 3, Math.floor(peak * bars) * 7), y, 3, mid - 3);
+    });
+  } else {                                         // scrolling loudness, mirrored (the real waveform of the song)
+    const data = live.history, step = width / 160;
+    for (let i = 0; i < data.length; i++) {
+      const v = data[i], x = width - (data.length - i) * step;
+      c.globalAlpha = 0.3 + 0.7 * (i / data.length);
+      c.fillRect(x, mid - v * (mid - 1), Math.max(1, step - 1), Math.max(1, v * (height - 2)));
+    }
+  }
+  c.globalAlpha = 1;
+}
+
+// ----- colours from the cover: the accent and a soft glow follow the playing track -----
+let coverColor = '';
+function takeCoverColor(img) {
+  try {
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = 24;
+    const c = canvas.getContext('2d', { willReadFrequently: true });
+    c.drawImage(img, 0, 0, 24, 24);
+    const px = c.getImageData(0, 0, 24, 24).data;
+    let best = null, bestScore = -1, sum = [0, 0, 0], count = 0;
+    const buckets = {};
+    for (let i = 0; i < px.length; i += 4) {
+      const [r, g, b] = [px[i], px[i + 1], px[i + 2]];
+      const max = Math.max(r, g, b), min = Math.min(r, g, b), light = (max + min) / 510, sat = max ? (max - min) / max : 0;
+      sum[0] += r; sum[1] += g; sum[2] += b; count++;
+      if (sat < 0.22 || light < 0.18 || light > 0.92) continue;
+      const hue = Math.round(rgbHue(r, g, b) / 24);           // 15 hue buckets
+      const bucket = buckets[hue] || (buckets[hue] = { r: 0, g: 0, b: 0, n: 0, sat: 0 });
+      bucket.r += r; bucket.g += g; bucket.b += b; bucket.n++; bucket.sat += sat;
+    }
+    for (const bucket of Object.values(buckets)) {
+      const score = bucket.n * (bucket.sat / bucket.n);           // common AND vivid
+      if (score > bestScore) { bestScore = score; best = bucket; }
+    }
+    const [r, g, b] = best ? [best.r / best.n, best.g / best.n, best.b / best.n] : sum.map((v) => v / count);
+    coverColor = readable(r, g, b);
+  } catch (e) {
+    coverColor = '';
+  }
+  applyCoverColor();
+}
+function rgbHue(r, g, b) {
+  const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+  if (!d) return 0;
+  const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+// Bright enough on black, dark enough on white.
+function readable(r, g, b) {
+  const lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
+  const light = document.documentElement.dataset.theme === 'light';
+  const k = light ? Math.min(1, 0.45 / Math.max(lum, 0.01)) : Math.max(1, 0.55 / Math.max(lum, 0.01));
+  const f = (v) => Math.round(Math.max(0, Math.min(255, light ? v * Math.min(k, 1) : v * Math.min(k, 3))));
+  return `rgb(${f(r)}, ${f(g)}, ${f(b)})`;
+}
+function applyCoverColor() {
+  const root = document.documentElement;
+  const on = prefs.coverColors && coverColor && state.media;
+  if (on) { root.style.setProperty('--accent', coverColor); root.style.setProperty('--accent-ring', coverColor); root.style.setProperty('--cover', coverColor); }
+  else { root.style.removeProperty('--accent'); root.style.removeProperty('--accent-ring'); root.style.removeProperty('--cover'); }
+  root.classList.toggle('cover-glow', !!on);
+  const backdrop = $('backdrop');
+  const img = $('coverimg');
+  const show = prefs.coverBackdrop && state.media && img.src && !img.hidden;
+  backdrop.hidden = !show;
+  if (show) backdrop.style.backgroundImage = `url("${img.src}")`;
+}
+
+// ----- gestures: swipe the player for tracks and volume, double tap to pause, tap the clock for the layout -----
+function startGestures() {
+  const player = $('player');
+  let start = null, lastTap = 0, volumeAtStart = 0, moved = false;
+  player.addEventListener('pointerdown', (e) => {
+    if (!prefs.gestures || e.target.closest('button, input')) return;
+    start = { x: e.clientX, y: e.clientY, t: performance.now() };
+    volumeAtStart = state.volume ? state.volume.level : 0;
+    moved = false;
+  });
+  player.addEventListener('pointermove', (e) => {
+    if (!start) return;
+    const dy = start.y - e.clientY;
+    if (Math.abs(dy) > 24 && Math.abs(dy) > Math.abs(e.clientX - start.x) * 1.4 && state.volume) {
+      moved = true;
+      const level = Math.max(0, Math.min(100, Math.round(volumeAtStart + dy / 3)));
+      $('volume').value = level;
+      $('volumevalue').textContent = String(level);
+      state.volumeBusy = performance.now();
+    }
+  });
+  player.addEventListener('pointerup', (e) => {
+    if (!start) return;
+    const dx = e.clientX - start.x, dy = start.y - e.clientY, quick = performance.now() - start.t < 600;
+    start = null;
+    if (!gestureAllowed()) return;
+    if (moved && state.volume) {
+      const level = Number($('volume').value);
+      send('volume', level);
+      toast(`Громкость ПК: ${level}%`);
+    } else if (quick && Math.abs(dx) > 60 && Math.abs(dy) < 50) {
+      send(dx < 0 ? 'next' : 'prev');
+      toast(dx < 0 ? 'Следующий трек ⏭' : '⏮ Предыдущий трек');
+    } else if (Math.abs(dx) < 10 && Math.abs(dy) < 10) {
+      const now = performance.now();
+      if (now - lastTap < 320) { send('toggle'); toast(state.media?.status === 'playing' ? 'Пауза' : 'Играть'); lastTap = 0; }
+      else lastTap = now;
+    }
+  });
+  $('time').parentElement.addEventListener('click', () => {
+    if (!prefs.gestures) return;
+    const order = ['panel', 'clock', 'music', 'monitoring'];
+    prefs.layout = order[(order.indexOf(prefs.layout) + 1) % order.length];
+    savePrefs(); applyPrefs();
+    toast(`Раскладка: ${{ panel: 'Panel', clock: 'Часы', music: 'Музыка', monitoring: 'Мониторинг' }[prefs.layout]}`);
+  });
+}
+function gestureAllowed() {
+  if (state.control) return true;
+  toast(state.secure ? 'Только просмотр — «Полный» включается на ПК.' : 'Управление — в защищённом режиме (HTTPS).');
+  return false;
+}
+
+// ----- «Сейчас на ПК» under the date -----
+function showActivity(msg) {
+  state.activity = msg;
+  const box = $('activity');
+  const show = prefs.showActivity && msg.app;
+  box.hidden = !show;
+  if (!show) return;
+  const title = msg.title && msg.title !== msg.app ? ` — ${msg.title}` : '';
+  box.replaceChildren(document.createTextNode(msg.fullscreen ? 'На весь экран: ' : 'Сейчас на ПК: '),
+    el('b', { text: msg.app }), document.createTextNode(title));
+}
+
 // ----- AMOLED burn-in protection: shift the whole screen a few px every two minutes -----
 function startBurnIn() {
   setInterval(() => {
@@ -1184,6 +1375,8 @@ function connect() {
     try { msg = JSON.parse(event.data); } catch (e) { return; }
     if (msg.type === 'hello') {
       $('pcname').textContent = msg.name || 'ПК';
+      levelsWanted = null;          // a fresh socket: tell the PC again what we want
+      subscribeLevels();
       only('panel');
       setStatus(true);
     } else if (msg.type === 'access') {
@@ -1196,6 +1389,10 @@ function connect() {
       showMedia(msg);
     } else if (msg.type === 'sessions') {
       showSessions(msg.items || []);
+    } else if (msg.type === 'level') {
+      onLevel(msg.l, msg.r);
+    } else if (msg.type === 'activity') {
+      showActivity(msg);
     } else if (msg.type === 'error') {
       toast(msg.message || 'Ошибка');
     }
@@ -1397,6 +1594,21 @@ function buildSettings() {
     el('h3', { text: 'Уведомления' }),
     notifyRow(),
 
+    el('h3', { text: 'Живой звук и цвета' }),
+    toggle('liveSound', 'Живой звук ПК под плеером'),
+    prefs.liveSound ? pref('Вид', chips('liveStyle', [['wave', 'Волна громкости'], ['meter', 'Стерео-индикатор'], ['glow', 'Только свечение']])) : null,
+    prefs.liveSound ? el('div', { class: 'note-text', text: 'Настоящий уровень звука с ПК (левый и правый канал), пока играет музыка. Карточка плеера светится в такт.' }) : null,
+    toggle('coverColors', 'Цвет акцента из обложки трека'),
+    toggle('coverBackdrop', 'Размытая обложка на фоне'),
+
+    el('h3', { text: 'Жесты' }),
+    toggle('gestures', 'Жесты на плеере и часах'),
+    prefs.gestures ? el('div', { class: 'note-text', text: 'По плееру: свайп влево — следующий трек, вправо — предыдущий, вверх/вниз — громкость ПК, двойной тап — пауза. Тап по часам — следующая раскладка.' }) : null,
+
+    el('h3', { text: 'Сейчас на ПК' }),
+    toggle('showActivity', 'Показывать активное приложение'),
+    prefs.showActivity ? el('div', { class: 'note-text', text: 'Под датой: что открыто на ПК. Название окна приходит только в защищённом режиме (HTTPS) — в нём бывает личное.' }) : null,
+
     el('h3', { text: 'Плеер' }),
     toggle('playerAlways', 'Показывать, даже когда ничего не играет'),
     toggle('showCover', 'Обложка'),
@@ -1485,6 +1697,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   setInterval(tickProgress, 1000);
   startIdle();
   startBurnIn();
+  startGestures();
+  document.addEventListener('visibilitychange', subscribeLevels);
   startBattery();
   showSecureInfo();
 

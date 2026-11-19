@@ -378,3 +378,32 @@ html[data-idle-size="full"] .center { align-self: stretch; }
 .limit { display: grid; grid-template-columns: 120px 1fr 52px; align-items: center; gap: 10px; font-size: 13px; }
 .limit span { color: var(--text2); }
 .limit b { text-align: right; font-size: 12px; font-weight: 500; }
+
+/* ----- «Сейчас на ПК» under the date ----- */
+.activity { margin-top: 6px; font-size: 13px; color: var(--text3); max-width: 80vw; margin-inline: auto;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.activity b { color: var(--text2); font-weight: 500; }
+
+/* ----- live sound under the player (real levels of the PC) ----- */
+.live { width: 100%; max-width: 560px; height: 34px; display: block; }
+html[data-layout="music"] .live { max-width: 720px; }
+.player { transition: box-shadow .08s linear; }
+
+/* ----- colours from the cover: a soft glow, or the blurred cover behind everything ----- */
+html.cover-glow body { background: radial-gradient(120% 80% at 50% 40%, color-mix(in srgb, var(--cover, var(--bg)) 22%, var(--bg)) 0%, var(--bg) 70%) fixed; }
+.backdrop { position: fixed; inset: -40px; z-index: -1; background: center / cover no-repeat;
+            filter: blur(38px) saturate(1.3) brightness(.38); transform: scale(1.1); transition: background-image .6s; }
+html[data-theme="light"] .backdrop { filter: blur(38px) saturate(1.2) brightness(1.25) opacity(.45); }
+body:has(.backdrop:not([hidden])) .player { background: color-mix(in srgb, var(--surface) 70%, transparent);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+
+/* gestures: no text selection or page bounce while swiping the player */
+html.gestures .player { touch-action: none; user-select: none; -webkit-user-select: none; }
+html.gestures .clock { cursor: pointer; }
+/* Landscape: «Сейчас на ПК» on the date's line and a slimmer live strip — everything fits the screen. */
+@media (orientation: landscape) {
+  .date, .activity:not([hidden]) { display: inline; }
+  .activity { margin: 0; font-size: 14px; max-width: none; }
+  .activity::before { content: "  ·  "; color: var(--text3); }
+  .live { height: 18px; }
+}

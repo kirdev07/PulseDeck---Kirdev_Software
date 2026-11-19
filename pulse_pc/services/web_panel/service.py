@@ -44,6 +44,8 @@ METRICS_SECONDS = 2.0
 MEDIA_SECONDS = 1.0
 MEDIA_RESYNC_SECONDS = 5.0
 SESSIONS_SECONDS = 3.0
+LEVEL_SECONDS = 0.05             # live visualizer: ~20 levels a second while asked for
+ACTIVITY_SECONDS = 2.0
 AUTH_RECHECK_SECONDS = 5.0
 MAX_CLIENTS = 8
 CLOSE_REVOKED = 4001
@@ -235,7 +237,8 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
         reader = MetricsReader()
         lock = asyncio.Lock()
         secure = request.secure
-        view = {"control": may_control(device, secure), "source": "", "wake": asyncio.Event()}
+        view = {"control": may_control(device, secure), "source": "", "wake": asyncio.Event(), "levels": False}
+        trusted = bool(secure and device.get("secure"))     # window titles only over HTTPS
 
         def access_message():
             if view["control"]:
@@ -299,6 +302,44 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
                     logger.debug("Веб-панель: список плееров недоступен", exc_info=True)
                 await asyncio.sleep(SESSIONS_SECONDS)
 
+        async def levels_loop():
+            # The real sound of the PC (Windows peak meter), ~20 times a second, only while the
+            # page shows the live visualizer.
+            from modules import volume
+            while not ws.closed:
+                if not view["levels"]:
+                    await asyncio.sleep(0.5)
+                    continue
+                try:
+                    level = await asyncio.to_thread(volume.levels)
+                    if level:
+                        await send({"type": "level", "l": round(level["left"], 3), "r": round(level["right"], 3)})
+                except (ConnectionError, RuntimeError):
+                    return
+                except Exception:  # noqa: BLE001
+                    await asyncio.sleep(1)
+                await asyncio.sleep(LEVEL_SECONDS)
+
+        async def activity_loop():
+            # «Сейчас на ПК»: the app in front (its title only to browsers paired over HTTPS).
+            from modules.winutil import foreground_activity
+            last = object()
+            while not ws.closed:
+                try:
+                    found = await asyncio.to_thread(foreground_activity)
+                except Exception:  # noqa: BLE001 - a window closing mid-read
+                    found = None
+                message = {"type": "activity", "app": (found or {}).get("app") or None,
+                           "title": (found or {}).get("title", "") if trusted else "",
+                           "fullscreen": bool((found or {}).get("fullscreen"))}
+                if message != last:
+                    try:
+                        await send(message)
+                    except (ConnectionError, RuntimeError):
+                        return
+                    last = message
+                await asyncio.sleep(ACTIVITY_SECONDS)
+
         async def auth_loop():
             # «Отозвать» on the PC must cut an open page; «Доступ» changes apply live.
             while not ws.closed:
@@ -337,7 +378,8 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
                     "device": device.get("name", ""), "control": view["control"], "secure": secure,
                     "metrics_interval": METRICS_SECONDS})
         await send(access_message())
-        tasks = [asyncio.create_task(loop()) for loop in (metrics_loop, media_loop, sessions_loop, auth_loop)]
+        tasks = [asyncio.create_task(loop()) for loop in (metrics_loop, media_loop, sessions_loop, auth_loop,
+                                                          levels_loop, activity_loop)]
         try:
             async for msg in ws:
                 if msg.type != WSMsgType.TEXT:
@@ -350,6 +392,8 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
                     continue
                 if data.get("type") == "ping":
                     await send({"type": "pong"})
+                elif data.get("type") == "subscribe":
+                    view["levels"] = bool(data.get("levels"))
                 elif data.get("type") == "command":
                     action = data.get("action")
                     if action not in COMMANDS:

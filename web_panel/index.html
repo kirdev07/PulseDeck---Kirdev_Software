@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="app.css?v=__VERSION__">
 </head>
 <body>
+  <div id="backdrop" class="backdrop" aria-hidden="true" hidden></div>
   <!-- Line icons of PulseDeck (24×24), the same set as PulseDeck Panel (PanelIcons.kt) and the PC app. -->
   <svg class="sprite" aria-hidden="true">
     <symbol id="i-settings" viewBox="0 0 24 24"><path d="M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></symbol>
@@ -102,6 +103,7 @@
     <section class="clock">
       <div id="time" class="time">--:--</div>
       <div id="date" class="date"></div>
+      <div id="activity" class="activity" hidden></div>
     </section>
 
     <section class="center">
@@ -128,6 +130,7 @@
           </label>
         </div>
       </article>
+      <canvas id="live" class="live" aria-hidden="true" hidden></canvas>
       <canvas id="wave" class="wave" width="288" height="36" aria-hidden="true"></canvas>
       <div class="hint" id="accesshint" hidden></div>
     </section>
