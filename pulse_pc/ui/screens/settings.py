@@ -149,16 +149,48 @@ class Swatch(QWidget):
             painter.drawPixmap(12, 12, icon("check", "#FFFFFF").pixmap(24, 24))
 
 
+class Document(QTextBrowser):
+    """A document shown in full: as tall as its text at the current width, so the section
+    scrolls as one page instead of a small box with a scrollbar of its own."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QSizePolicy
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.document().documentLayout().documentSizeChanged.connect(lambda _size: self._fit())
+
+    def _fit(self):
+        self.document().setTextWidth(self.viewport().width())
+        height = int(self.document().size().height()) + 2 * self.frameWidth() + 4
+        if height != self.height():
+            self.setFixedHeight(height)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        self._fit()
+
+    def wheelEvent(self, event):
+        event.ignore()              # the page scrolls, not the document
+
+
 def document(path, missing):
-    view = QTextBrowser()
+    view = Document()
     view.setOpenExternalLinks(True)
     view.setStyleSheet("border: none; background: transparent;")
     try:
         view.setMarkdown(Path(path).read_text(encoding="utf-8"))
     except OSError:
         view.setPlainText(missing)
-    view.setMinimumHeight(360)
     return view
+
+
+def compact(widget):
+    """A button as wide as its text inside a card (Material 3), not stretched across it."""
+    from PySide6.QtWidgets import QSizePolicy
+    widget.setSizePolicy(QSizePolicy.Policy.Maximum, QSizePolicy.Policy.Fixed)
+    return widget
 
 
 class SettingsScreen(QWidget):
@@ -388,8 +420,8 @@ class SettingsScreen(QWidget):
         data.body.addWidget(label(f"Настройки, журнал и полученные файлы хранятся в {self.config_dir} "
                                   f"и {config.FILES_DIR}. PulseDeck не отправляет их разработчику.",
                                   "muted", wrap=True))
-        data.body.addWidget(button("Открыть папку настроек", lambda: QDesktopServices.openUrl(
-            QUrl.fromLocalFile(str(self.config_dir))), symbol="folder"))
+        data.body.addWidget(compact(button("Открыть папку настроек", lambda: QDesktopServices.openUrl(
+            QUrl.fromLocalFile(str(self.config_dir))), symbol="folder")))
         layout.addWidget(data)
 
     def _license(self, layout):
@@ -406,13 +438,21 @@ class SettingsScreen(QWidget):
         table.setShowGrid(False)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        head = table.horizontalHeader()
+        head.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        head.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        head.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        head.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        table.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        table.verticalHeader().setDefaultSectionSize(34)
         for row, item in enumerate(items):
             for col, key in enumerate(("name", "version", "license")):
                 cell = QTableWidgetItem(item[key])
                 cell.setToolTip(item["url"])
                 table.setItem(row, col, cell)
-        table.setMinimumHeight(40 + 32 * len(items))
+        # Every row visible: the section scrolls, not a box inside it.
+        table.setFixedHeight(head.sizeHint().height() + 34 * len(items) + 4)
         self.components_table = table
         third.body.addWidget(table)
         third.body.addWidget(label(f"Qt {PYSIDE_VERSION} распространяется по LGPLv3 (PySide6). Подробности и "
@@ -498,9 +538,10 @@ class SettingsScreen(QWidget):
                                   "сервер поддержки. Сейчас сообщите о проблеме на GitHub.", "muted", wrap=True))
         card.body.addWidget(label("Перед отправкой уберите из журнала личные данные. PulseDeck ничего не отправляет "
                                   "автоматически.", "caption", wrap=True))
-        card.body.addWidget(button("Открыть Issues на GitHub", lambda: QDesktopServices.openUrl(
-            QUrl(REPOSITORY + "/issues")), symbol="external"))
-        card.body.addWidget(button("Диагностика и журнал", lambda: self._navigate("console"), "ghost", "chevron"))
+        card.body.addWidget(compact(button("Открыть Issues на GitHub", lambda: QDesktopServices.openUrl(
+            QUrl(REPOSITORY + "/issues")), symbol="external")))
+        card.body.addWidget(compact(button("Диагностика и журнал", lambda: self._navigate("console"), "ghost",
+                                           "chevron")))
         layout.addWidget(card)
 
     def _about(self, layout):
@@ -515,8 +556,8 @@ class SettingsScreen(QWidget):
         row.addLayout(names, 1)
         card.body.addLayout(row)
         card.body.addWidget(label("Управление компьютером Windows с ПК, из Telegram и с телефона.", "muted", wrap=True))
-        card.body.addWidget(button("Репозиторий на GitHub", lambda: QDesktopServices.openUrl(QUrl(REPOSITORY)),
-                                   symbol="external"))
+        card.body.addWidget(compact(button("Репозиторий на GitHub", lambda: QDesktopServices.openUrl(QUrl(REPOSITORY)),
+                                           symbol="external")))
         layout.addWidget(card)
 
     # ----- behaviour -----
@@ -629,7 +670,14 @@ class SettingsScreen(QWidget):
             line = StatusLine(text, state)
             line.text.setWordWrap(True)
             self.security_lines.addWidget(line)
-        legend = label("● в порядке   ○ требует внимания   ⊗ проблема", "caption")
+        # The legend with the same dots as the lines above (text glyphs came out tiny).
+        legend = QWidget()
+        row = QHBoxLayout(legend)
+        row.setContentsMargins(0, tokens.SPACE_2, 0, 0)
+        row.setSpacing(tokens.SPACE_4)
+        for state, text in (("ok", "в порядке"), ("off", "требует внимания"), ("error", "проблема")):
+            row.addWidget(StatusLine(text, state, "caption"))
+        row.addStretch(1)
         self.security_lines.addWidget(legend)
 
 

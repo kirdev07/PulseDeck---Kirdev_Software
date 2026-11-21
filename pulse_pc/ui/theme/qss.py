@@ -81,6 +81,7 @@ QLineEdit#search:hover {{ background: {t.SURFACE_3}; }}
 QLineEdit#search:focus {{ border: 2px solid {t.ACCENT}; padding: 6px 14px; }}
 QPlainTextEdit#log {{ font-family: {t.FONT_MONO}; font-size: {t.FS_SMALL}pt; color: {t.TEXT_2}; background: {t.SURFACE_LOW};
                       border-radius: {t.RADIUS_MD}px; padding: 8px; }}
+QSpinBox QLineEdit, QComboBox QLineEdit {{ padding: 0; border: none; background: transparent; }}
 QComboBox::drop-down {{ border: none; width: 24px; }}
 QComboBox QAbstractItemView {{ background: {t.SURFACE_2}; border: none; border-radius: 8px; padding: 4px;
                                selection-background-color: {t.SECONDARY_CONTAINER}; selection-color: {t.ON_SECONDARY_CONTAINER}; }}

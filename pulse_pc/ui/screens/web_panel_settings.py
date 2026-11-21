@@ -2,7 +2,28 @@
 apps — «Телефон» → «Подключить по коду» → «Браузер» — and listed among the devices there."""
 from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QDesktopServices
-from PySide6.QtWidgets import QHBoxLayout, QSpinBox, QVBoxLayout
+from PySide6.QtGui import QIntValidator
+from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QVBoxLayout
+
+
+class PortField(QLineEdit):
+    """A port typed as a number (1024–65535). A QSpinBox without arrows shrinks its text to
+    1 px under the stylesheet (Qt), and arrows do not fit a Material field."""
+
+    def __init__(self, port):
+        super().__init__(str(port))
+        self.setValidator(QIntValidator(1024, 65535, self))
+        self.setFixedWidth(110)
+        self.setAccessibleName("Порт веб-панели")
+
+    def value(self):
+        try:
+            return max(1024, min(65535, int(self.text())))
+        except ValueError:
+            return 8780
+
+    def setValue(self, port):
+        self.setText(str(port))
 
 from pulse_pc.core import state as st
 from pulse_pc.services.web_panel import settings as web_settings
@@ -34,10 +55,7 @@ class WebPanelSection:
                                  "По умолчанию выключена. HTTPS — с домашним сертификатом этого ПК, который действует "
                                  "только для адресов домашней сети.", self.enabled))
         card.body.addWidget(divider())
-        self.port = QSpinBox()
-        self.port.setRange(1024, 65535)
-        self.port.setValue(data["port"])
-        self.port.setFixedWidth(110)
+        self.port = PortField(data["port"])
         port_row = _row("Порт", f"По умолчанию {web_settings.DEFAULT_PORT} (HTTP), следующий — HTTPS. Меняйте, если порт занят.",
                         None)
         port_row.addWidget(self.port)
