@@ -257,7 +257,7 @@ function pcWindowRow(w) {
 async function pcScreenshot() {
   toast('Снимаю экран ПК…');
   try {
-    const response = await pcApi('screenshot', { query: { monitor: '0', width: String(Math.min(3840, Math.round(screen.width * (devicePixelRatio || 1) * 1.5))) }, raw: true });
+    const response = await pcApi('screenshot', { query: { monitor: '1', width: String(Math.min(3840, Math.round(screen.width * (devicePixelRatio || 1) * 1.5))) }, raw: true });
     const url = URL.createObjectURL(await response.blob());
     const view = el('div', { class: 'shot', onclick: () => { view.remove(); URL.revokeObjectURL(url); } },
       el('img', { src: url, alt: 'Скриншот ПК' }), el('div', { class: 'shot-hint', text: 'Нажмите, чтобы закрыть' }));
