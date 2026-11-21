@@ -297,10 +297,15 @@ class SettingsScreen(QWidget):
         layout.addWidget(accent)
 
         background = Card("Фон окна")
-        self.background_choice = choice_row((("glow", "Свечение"), ("dots", "Точки"), ("flat", "Ровный")),
-                                            self.look["background"], lambda v: self.pick_look("background", v))
-        background.body.addLayout(setting_row("Фон", "Свечение — мягкий свет цвета акцента из углов окна.",
-                                              self.background_choice))
+        from pulse_pc.ui.shell import mica_supported
+        options = (("glow", "Свечение"), ("dots", "Точки"), ("flat", "Ровный"))
+        if mica_supported():
+            options += (("mica", "Mica"),)
+        self.background_choice = choice_row(options, self.look["background"], lambda v: self.pick_look("background", v))
+        background.body.addLayout(setting_row(
+            "Фон", "Свечение — мягкий свет цвета акцента из углов окна."
+            + (" Mica — материал Windows 11: сквозь окно чуть видны обои рабочего стола." if mica_supported() else ""),
+            self.background_choice))
         layout.addWidget(background)
 
         apply_row = QHBoxLayout()

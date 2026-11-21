@@ -8,7 +8,8 @@ containers, surfaces of five steps, outlines. The owner picks in «Настро�
   * accent: purple (default), blue, green, orange, pink;
   * mode: dark, light or «system» (follows Windows);
   * amoled: pure black window in the dark mode;
-  * background: «glow» (soft accent light from the corners), «dots» or «flat».
+  * background: «glow» (soft accent light from the corners), «dots», «flat» or «mica» (Windows 11:
+    the desktop shows through the window, tinted; elsewhere it falls back to «glow»).
 
 The old names (BG, SURFACE, TEXT_2, ACCENT …) keep their meaning, so every screen follows.
 """
@@ -64,7 +65,7 @@ SEEDS = {"purple": "#6750A4", "blue": "#0061A4", "green": "#386A20", "orange": "
          "mono": "#5E5E5E"}
 STYLES = ("color", "mono")
 MODES = ("dark", "light", "system")
-BACKGROUNDS = ("glow", "dots", "flat")
+BACKGROUNDS = ("glow", "dots", "flat", "mica")
 DEFAULTS = {"style": "color", "accent": "purple", "mode": "dark", "amoled": False, "background": "glow"}
 
 
@@ -96,7 +97,7 @@ def read_appearance(path=None):
         except Exception:  # noqa: BLE001 - no config (a bare test): defaults
             return found
     try:
-        with open(path, encoding="utf-8") as stream:
+        with open(path, encoding="utf-8-sig") as stream:
             data = json.load(stream)
     except (OSError, ValueError):
         data = {}

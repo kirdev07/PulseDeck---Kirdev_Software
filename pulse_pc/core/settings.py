@@ -45,7 +45,7 @@ class SettingsStore:
 
     def load(self):
         try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
+            data = json.loads(self.path.read_text(encoding="utf-8-sig"))
         except (OSError, ValueError):
             data = {}
         known = {f.name: f for f in fields(UiSettings)}

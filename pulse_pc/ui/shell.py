@@ -25,17 +25,53 @@ def round_corners(window):
         pass
 
 
+def mica_supported():
+    """Mica (the material of Windows 11 windows) needs Windows 11 22H2, build 22621 or later."""
+    import sys
+    return sys.platform == "win32" and sys.getwindowsversion().build >= 22621
+
+
+def apply_mica(window, dark):
+    """Asks DWM to draw Mica behind the whole (translucent, frameless) window."""
+    import ctypes
+
+    class MARGINS(ctypes.Structure):
+        _fields_ = [("left", ctypes.c_int), ("right", ctypes.c_int), ("top", ctypes.c_int), ("bottom", ctypes.c_int)]
+
+    DWMWA_USE_IMMERSIVE_DARK_MODE, DWMWA_SYSTEMBACKDROP_TYPE, DWMSBT_MAINWINDOW = 20, 38, 2
+    try:
+        hwnd = ctypes.c_void_p(int(window.winId()))
+        dwm = ctypes.windll.dwmapi
+        margins = MARGINS(-1, -1, -1, -1)
+        dwm.DwmExtendFrameIntoClientArea(hwnd, ctypes.byref(margins))
+        for attribute, value in ((DWMWA_USE_IMMERSIVE_DARK_MODE, 1 if dark else 0), (DWMWA_SYSTEMBACKDROP_TYPE, DWMSBT_MAINWINDOW)):
+            data = ctypes.c_int(value)
+            dwm.DwmSetWindowAttribute(hwnd, attribute, ctypes.byref(data), ctypes.sizeof(data))
+    except (AttributeError, OSError):
+        pass
+
+
 class Backdrop(QWidget):
     """The window background of «Оформление → Фон»: the surface colour plus a soft light of
     the accent from two corners («glow»), a fine dot grid («dots») or nothing («flat»).
-    Pages are transparent, cards opaque, so the light shows between the cards."""
+    Pages are transparent, cards opaque, so the light shows between the cards.
+    «mica»: Windows draws Mica behind the window; here only a tint of the surface colour keeps
+    the text readable on any wallpaper (without Mica it is «glow»)."""
+
+    mica = False
 
     def paintEvent(self, _):
         from PySide6.QtGui import QRadialGradient
         painter = QPainter(self)
-        painter.fillRect(self.rect(), QColor(tokens.BG))
         w, h = self.width(), self.height()
-        if tokens.BACKGROUND == "glow":
+        if self.mica:
+            tint = QColor(tokens.BG)
+            tint.setAlphaF(0.55 if tokens.DARK else 0.45)
+            painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Source)
+            painter.fillRect(self.rect(), tint)
+            return
+        painter.fillRect(self.rect(), QColor(tokens.BG))
+        if tokens.BACKGROUND in ("glow", "mica"):
             strength = 0.16 if tokens.DARK else 0.11
             for cx, cy, radius, alpha in ((w, 0, max(w, h) * 0.62, strength), (0, h, max(w, h) * 0.5, strength * 0.6)):
                 gradient = QRadialGradient(cx, cy, radius)
@@ -77,6 +113,10 @@ class MainWindow(QMainWindow):
 
         root = Backdrop()
         root.setObjectName("root")
+        self.mica = tokens.BACKGROUND == "mica" and mica_supported()
+        if self.mica:
+            self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+            root.mica = True
         root.setMouseTracking(True)
         root.installEventFilter(self)
         self.root = root
@@ -131,6 +171,8 @@ class MainWindow(QMainWindow):
     def showEvent(self, event):
         super().showEvent(event)
         round_corners(self)
+        if self.mica:
+            apply_mica(self, tokens.DARK)
 
     def paintEvent(self, event):
         super().paintEvent(event)
