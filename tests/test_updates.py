@@ -20,6 +20,26 @@ class UpdatesTest(unittest.TestCase):
         self.assertEqual(release.name, "PulseDeck-1.0.1-Setup.exe")
         self.assertEqual(release.size, 7)
         self.assertEqual(release.notes, "Что нового\n• Автообновление с GitHub")
+        self.assertIn("**Автообновление**", release.markdown)       # kept as written, shown formatted
+
+    def test_changelog_section_of_the_version(self):
+        import tempfile
+        from pathlib import Path
+        path = Path(tempfile.mkdtemp()) / "CHANGELOG.md"
+        path.write_text("# Журнал\n\n## [Не выпущено]\n- новое\n\n## [1.0.2] — 2026-10-28\n### Изменено\n- QR 240 px\n\n"
+                        "## [1.0.1]\n- QR\n\n[1.0.2]: https://example.com\n", encoding="utf-8")
+        self.assertEqual(updates.changelog_section(path, "1.0.2"), "### Изменено\n- QR 240 px")
+        self.assertEqual(updates.changelog_section(path, "9.9.9"), "- новое")       # unknown: the newest section
+        self.assertEqual(updates.changelog_section(path.with_name("none.md"), "1.0.2"), "")
+
+    def test_last_check_time(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        folder = Path(tempfile.mkdtemp())
+        self.assertIsNone(updates.last_check(folder))
+        (folder / "update_check.json").write_text(json.dumps({"time": 1700000000}), encoding="utf-8")
+        self.assertEqual(updates.last_check(folder), 1700000000.0)
 
     def test_skips_prerelease_draft_and_missing_installer(self):
         asset = [{"name": "PulseDeck-2.0.0-Setup.exe"}]

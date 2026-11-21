@@ -465,27 +465,77 @@ class SettingsScreen(QWidget):
         layout.addWidget(card)
 
     def _updates(self, layout):
+        """Version, a status with a dot, the download progress, and «Что нового»: the new
+        release's description from GitHub, or what the running version brought (CHANGELOG.md)."""
+        from PySide6.QtWidgets import QProgressBar
         from pulse_pc.services import updates
-        card = Card("Обновления")
-        self.update_status = label("", "", wrap=True)
-        self.update_notes = label("", "caption", wrap=True)
-        self.update_notes.hide()
-        card.body.addWidget(self.update_status)
-        card.body.addWidget(self.update_notes)
+        hero = Card(kind="card", padding=tokens.SPACE_5, spacing=tokens.SPACE_3)
+        top = QHBoxLayout()
+        top.setSpacing(tokens.SPACE_4)
+        logo = label()
+        logo.setPixmap(logo_pixmap(64, logo.devicePixelRatioF(), themed=True))
+        top.addWidget(logo, 0, Qt.AlignmentFlag.AlignTop)
+        text = QVBoxLayout()
+        text.setSpacing(4)
+        text.addWidget(label(f"{APP_NAME} {__version__}", "title"))
+        self.update_status = StatusLine("", "off")
+        text.addWidget(self.update_status)
+        self.update_checked = label("", "caption")
+        text.addWidget(self.update_checked)
+        top.addLayout(text, 1)
+        hero.body.addLayout(top)
+
+        self.update_progress_box = QWidget()
+        progress = QVBoxLayout(self.update_progress_box)
+        progress.setContentsMargins(0, 0, 0, 0)
+        progress.setSpacing(6)
+        self.update_bar = QProgressBar()
+        self.update_bar.setRange(0, 1000)
+        self.update_bar.setTextVisible(False)
+        progress.addWidget(self.update_bar)
+        self.update_bytes = label("", "caption")
+        progress.addWidget(self.update_bytes)
+        self.update_progress_box.hide()
+        hero.body.addWidget(self.update_progress_box)
+
         row = QHBoxLayout()
+        row.setSpacing(tokens.SPACE_2)
         self.update_button = button("Проверить", self._update_action, "primary", "refresh")
         row.addWidget(self.update_button)
         row.addWidget(button("Все версии на GitHub", lambda: QDesktopServices.openUrl(QUrl(updates.RELEASES)),
                              "ghost", "external"))
         row.addStretch(1)
-        card.body.addLayout(row)
-        card.body.addWidget(label(f"PulseDeck проверяет GitHub при запуске и каждые {updates.AUTO_HOURS} ч, новую версию скачивает сам и предлагает установить. "
-                                  "Новая версия ставится поверх: настройки, токен и телефоны сохраняются, "
-                                  "программа перезапустится сама.", "caption", wrap=True))
-        layout.addWidget(card)
+        hero.body.addLayout(row)
+        layout.addWidget(hero)
+
+        self.update_news = Card("Что нового")
+        self.update_notes = Document()
+        self.update_notes.setOpenExternalLinks(True)
+        self.update_notes.setStyleSheet("border: none; background: transparent;")
+        self.update_news.body.addWidget(self.update_notes)
+        layout.addWidget(self.update_news)
+
+        how = Card("Как это работает")
+        for symbol, line in (("refresh", f"PulseDeck проверяет GitHub при запуске и каждые {updates.AUTO_HOURS} ч."),
+                             ("download", "Новую версию скачивает сам и спрашивает, когда установить."),
+                             ("shield", "Ставится поверх: настройки, токен бота и телефоны сохраняются, программа "
+                                        "запускается снова сама.")):
+            item = QHBoxLayout()
+            item.setSpacing(tokens.SPACE_3)
+            glyph = label()
+            glyph.setPixmap(icon(symbol, tokens.ON_SECONDARY_CONTAINER).pixmap(18, 18))
+            glyph.setFixedSize(32, 32)
+            glyph.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            glyph.setStyleSheet(f"background: {tokens.SECONDARY_CONTAINER}; border-radius: 16px;")
+            item.addWidget(glyph)
+            item.addWidget(label(line, "muted", wrap=True), 1)
+            how.body.addLayout(item)
+        layout.addWidget(how)
+
         self.updater = getattr(self.context, "updater", None)
         if self.updater is not None:
             self.updater.changed.connect(self._show_update)
+        self._shown_notes = None
         self._show_update()
 
     def _update_action(self):
@@ -500,37 +550,62 @@ class SettingsScreen(QWidget):
             self.updater.check()
 
     def _show_update(self, *_):
+        import time as clock
         from pulse_pc.services import updates
         updater = self.updater
-        notes = ""
+        release = updater.release if updater is not None else None
+        state = updater.state if updater is not None else updates.IDLE
+        downloading = False
         if updates.portable_build():
-            text, action = (f"Портативная версия {__version__}. Чтобы обновиться, скачайте новый ZIP со страницы "
-                            "«Все версии на GitHub» и распакуйте поверх этой папки."), None
+            text, dot, action = ("Портативная версия: обновление — новый ZIP со страницы «Все версии на GitHub», "
+                                 "распакованный поверх этой папки."), "off", None
         elif updater is None or not updates.installed_build():
-            text, action = (f"Установлена версия {__version__}. Запуск из исходников обновляется через git pull; "
-                            "автообновление работает в установленной программе."), None
+            text, dot, action = ("Запуск из исходников обновляется через git pull; автообновление работает в "
+                                 "установленной программе."), "off", None
         else:
-            state, release = updater.state, updater.release
-            text, action = {
-                updates.IDLE: (f"Установлена версия {__version__}.", "Проверить"),
-                updates.CHECKING: ("Проверяю обновления…", None),
-                updates.UP_TO_DATE: (f"Установлена последняя версия {__version__}.", "Проверить"),
-                updates.AVAILABLE: (f"Доступна версия {release.version if release else ''} (у вас {__version__}).",
-                                    "Скачать и установить"),
-                updates.DOWNLOADING: (f"Скачиваю {release.version if release else ''}: {round(updater.progress * 100)}%",
-                                      None),
-                updates.READY: ("Обновление скачано. PulseDeck закроется, установит новую версию и запустится снова.",
+            new = release.version if release else ""
+            text, dot, action = {
+                updates.IDLE: ("Проверка ещё не выполнялась.", "off", "Проверить"),
+                updates.CHECKING: ("Проверяю обновления…", "busy", None),
+                updates.UP_TO_DATE: ("Установлена последняя версия.", "ok", "Проверить"),
+                updates.AVAILABLE: (f"Доступна версия {new}.", "busy", "Скачать и установить"),
+                updates.DOWNLOADING: (f"Скачиваю версию {new}…", "busy", None),
+                updates.READY: (f"Версия {new} скачана: PulseDeck закроется, установит её и запустится снова.", "ok",
                                 "Установить и перезапустить"),
-                updates.FAILED: (updater.message, "Проверить"),
+                updates.FAILED: (updater.message or "Не удалось проверить обновления.", "error", "Повторить"),
             }[state]
-            if state == updates.AVAILABLE and release:
-                notes = release.notes[:600]
-        self.update_status.setText(text)
-        self.update_notes.setText(notes)
-        self.update_notes.setVisible(bool(notes))
+            downloading = state == updates.DOWNLOADING
+        self.update_status.set(text, dot)
+        checked = updates.last_check(self.config_dir)
+        self.update_checked.setText("Последняя проверка: " + clock.strftime("%d.%m.%Y, %H:%M", clock.localtime(checked))
+                                    if checked else "")
+        self.update_checked.setVisible(bool(checked))
+
+        self.update_progress_box.setVisible(downloading)
+        if downloading and updater is not None:
+            fraction = max(0.0, min(1.0, updater.progress))
+            self.update_bar.setValue(round(fraction * 1000))
+            size = (release.size if release else 0) / (1024 * 1024)
+            self.update_bytes.setText(f"{fraction * size:.1f} из {size:.1f} МБ · {round(fraction * 100)}%" if size
+                                      else f"{round(fraction * 100)}%")
+
         self.update_button.setVisible(action is not None)
         if action:
             self.update_button.setText(action)
+            symbol = {updates.AVAILABLE: "download", updates.READY: "check"}.get(state, "refresh")
+            self.update_button.setIcon(icon(symbol, tokens.ON_ACCENT))
+
+        # «Что нового»: the new release while there is one, otherwise this version's changelog.
+        if release is not None and state in (updates.AVAILABLE, updates.DOWNLOADING, updates.READY):
+            title, notes = f"Что нового в версии {release.version}", release.markdown or release.notes
+        else:
+            title = f"Что нового в версии {__version__}"
+            notes = updates.changelog_section(ROOT / "CHANGELOG.md", __version__)
+        self.update_news.title.setText(title)
+        self.update_news.setVisible(bool(notes))
+        if notes != self._shown_notes:          # not re-laid out on every progress tick
+            self._shown_notes = notes
+            self.update_notes.setMarkdown(notes)
 
     def _support(self, layout):
         card = Card("Связаться с разработчиком")

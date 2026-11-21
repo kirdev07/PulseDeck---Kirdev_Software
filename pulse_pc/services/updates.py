@@ -35,10 +35,11 @@ IDLE, CHECKING, UP_TO_DATE, AVAILABLE, DOWNLOADING, READY, FAILED = (
 @dataclass(frozen=True)
 class Release:
     version: str
-    notes: str
+    notes: str          # plain text (dialogs, tray)
     url: str
     size: int
     name: str
+    markdown: str = ""  # the release description as written on GitHub (shown formatted in «Обновления»)
 
 
 def parse(data):
@@ -48,8 +49,9 @@ def parse(data):
     for asset in data.get("assets") or ():
         name = asset.get("name", "")
         if name.lower().endswith("-setup.exe"):
-            return Release(str(data.get("tag_name", "")).lstrip("vV"), plain(data.get("body") or ""),
-                           asset.get("browser_download_url", ""), int(asset.get("size") or 0), name)
+            body = str(data.get("body") or "")
+            return Release(str(data.get("tag_name", "")).lstrip("vV"), plain(body),
+                           asset.get("browser_download_url", ""), int(asset.get("size") or 0), name, body[:20000])
     return None
 
 
@@ -72,6 +74,31 @@ def plain(markdown):
         line = re.sub(r"\[([^\]]*)]\([^)]*\)", r"\1", line)
         lines.append(re.sub(r"\*\*|__|`", "", line))
     return re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+
+
+def last_check(config_dir):
+    """When GitHub was last asked (seconds since the epoch), or None."""
+    try:
+        return float(json.loads((Path(config_dir) / "update_check.json").read_text(encoding="utf-8")).get("time"))
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def changelog_section(path, version):
+    """The «## [version]» part of CHANGELOG.md (markdown), or the first section when the
+    running version has none there yet; '' without the file."""
+    import re
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return ""
+    parts = re.split(r"(?m)^## ", text)[1:]
+    chosen = next((p for p in parts if p.startswith(f"[{version}]")), parts[0] if parts else "")
+    if not chosen:
+        return ""
+    title, _, body = chosen.partition("\n")
+    body = re.sub(r"(?m)^\[[^\]]+\]:\s*\S+\s*$", "", body)       # link references at the end
+    return body.strip()
 
 
 def installed_build():
