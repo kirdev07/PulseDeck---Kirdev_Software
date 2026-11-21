@@ -699,7 +699,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None, browser=Fals
     if version == 1:
         if not browser:
             from modules.display_api import add_display_route
-            add_display_route(app, current_player, control_player, workstation_locked)
+            add_display_route(app, current_player, control_player, workstation_locked, player_access.sessions)
             app.router.add_post("/api/v1/pair", pair_with_code)
         app.router.add_get("/api/v1/info", info)
         for route in routes:

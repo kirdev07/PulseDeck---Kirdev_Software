@@ -4,9 +4,11 @@ Runs only on the TLS server (API v1), behind the same guard as every other v1 ro
 LAN peers only and a valid per-device token (pairing by code, revocable on the PC).
 Protocol: docs/PANEL_PROTOCOL.md.
 
-Server -> panel: hello, metrics (every METRICS_SECONDS), media (on change), error.
-Panel -> server: {"type": "command", "action": "toggle" | "next" | "prev" | "seek" | "volume"}, {"type": "ping"},
-{"type": "subscribe", "metrics": false} (the panel runs in the background: send media only).
+Server -> panel: hello, metrics (every METRICS_SECONDS), media (on change), sessions (players to
+choose from), activity (the app in front on the PC), error.
+Panel -> server: {"type": "command", "action": "toggle" | "next" | "prev" | "seek" | "volume" | "source"},
+{"type": "ping"}, {"type": "subscribe", "metrics": false} (the panel runs in the background: send media only).
+Panels that do not know a message type ignore it, so new messages need no new protocol version.
 """
 import asyncio
 import concurrent.futures
@@ -24,7 +26,9 @@ METRICS_SECONDS = 1.5
 MEDIA_SECONDS = 1.0
 MEDIA_RESYNC_SECONDS = 5.0      # position is re-sent this often; the panel interpolates in between
 AUTH_RECHECK_SECONDS = 5.0      # a revoked phone is disconnected within this time
-COMMANDS = {"toggle", "next", "prev", "seek", "volume"}
+SESSIONS_SECONDS = 3.0         # the list of players is re-read this often
+ACTIVITY_SECONDS = 3.0         # «Сейчас на ПК»
+COMMANDS = {"toggle", "next", "prev", "seek", "volume", "source"}
 MIN_INTERVAL, MAX_INTERVAL = 1.0, 10.0      # metrics period the panel may ask for, seconds
 CLOSE_REVOKED = 4001
 
@@ -151,13 +155,14 @@ def system_volume_state():
     return volume.get() if volume.AVAILABLE else None
 
 
-def add_display_route(app, current_player, control_player, workstation_locked):
-    async def run_command(action, value):
+def add_display_route(app, current_player, control_player, workstation_locked, list_players=None):
+    """current_player(source) / control_player(cmd, value, source) / list_players(): modules.player_access."""
+    async def run_command(action, value, source=""):
         """Playback and PC volume only; values are validated, nothing else can run."""
         if action == "seek":
             if not isinstance(value, (int, float)) or isinstance(value, bool) or value < 0:
                 raise ValueError("Позиция — число секунд.")
-            await control_player("seek", float(value))
+            await control_player("seek", float(value), source)
         elif action == "volume":
             from modules import volume
             if not isinstance(value, int) or isinstance(value, bool) or not 0 <= value <= 100:
@@ -166,7 +171,7 @@ def add_display_route(app, current_player, control_player, workstation_locked):
                 raise ValueError("Громкость ПК недоступна: не установлен pycaw.")
             await asyncio.to_thread(volume.set_level, value)
         else:
-            await control_player(action)
+            await control_player(action, None, source)
 
     async def display(request):
         token = request.headers.get("Authorization", "")[7:]     # already checked by the guard
@@ -177,7 +182,7 @@ def add_display_route(app, current_player, control_player, workstation_locked):
         reader = MetricsReader()
         send_lock = asyncio.Lock()
         closing = asyncio.Event()
-        wants = {"metrics": True, "interval": METRICS_SECONDS}
+        wants = {"metrics": True, "interval": METRICS_SECONDS, "source": "", "wake": asyncio.Event()}
 
         async def send(message):
             async with send_lock:
@@ -201,18 +206,64 @@ def add_display_route(app, current_player, control_player, workstation_locked):
             last, sent_at = None, 0.0
             while not ws.closed:
                 try:
-                    message = media_message(await current_player())
+                    message = media_message(await current_player(wants["source"]))
                     message["system_volume"] = await asyncio.to_thread(system_volume_state)
+                    message["source_id"] = wants["source"]
                     now = time.monotonic()
                     playing = (message["session"] or {}).get("status") == "playing"
-                    if not _same_track(message, last) or (playing and now - sent_at >= MEDIA_RESYNC_SECONDS):
+                    if not _same_track(message, last) or (playing and now - sent_at >= MEDIA_RESYNC_SECONDS) \
+                            or message["source_id"] != (last or {}).get("source_id"):
                         await send(message)
                         last, sent_at = message, now
                 except (ConnectionError, RuntimeError):
                     return
                 except Exception:  # noqa: BLE001 - media sessions disappear mid-read
                     logger.debug("Состояние плеера недоступно", exc_info=True)
-                await asyncio.sleep(MEDIA_SECONDS)
+                wants["wake"].clear()
+                try:        # a command wakes the loop at once, so the panel sees the result quickly
+                    await asyncio.wait_for(wants["wake"].wait(), MEDIA_SECONDS)
+                except asyncio.TimeoutError:
+                    pass
+
+        async def sessions_loop():
+            # Players the panel can choose from («Автоматически» is the panel's own first item).
+            if list_players is None:
+                return
+            last = None
+            while not ws.closed:
+                try:
+                    items = [{"id": s.get("id", ""), "source": source_name(s.get("source") or s.get("id") or ""),
+                              "title": s.get("title", ""), "status": s.get("status", "")} for s in await list_players()]
+                    if items != last:
+                        await send({"type": "sessions", "items": items})
+                        last = items
+                except (ConnectionError, RuntimeError):
+                    return
+                except Exception:  # noqa: BLE001 - media sessions disappear mid-read
+                    logger.debug("Список плееров недоступен", exc_info=True)
+                await asyncio.sleep(SESSIONS_SECONDS)
+
+        async def activity_loop():
+            # «Сейчас на ПК»: the app in front and its window title (the link is TLS with a pinned key).
+            last = object()
+            while not ws.closed:
+                if not wants["metrics"]:            # in the background nobody looks at it
+                    await asyncio.sleep(ACTIVITY_SECONDS)
+                    continue
+                try:
+                    from modules.winutil import foreground_activity
+                    found = await asyncio.to_thread(foreground_activity)
+                except Exception:  # noqa: BLE001 - a window closing mid-read, no pywin32
+                    found = None
+                message = {"type": "activity", "app": (found or {}).get("app") or None,
+                           "title": (found or {}).get("title", ""), "fullscreen": bool((found or {}).get("fullscreen"))}
+                if message != last:
+                    try:
+                        await send(message)
+                    except (ConnectionError, RuntimeError):
+                        return
+                    last = message
+                await asyncio.sleep(ACTIVITY_SECONDS)
 
         async def auth_loop():
             # Revocation on the PC must cut an open connection, not only new ones.
@@ -229,7 +280,7 @@ def add_display_route(app, current_player, control_player, workstation_locked):
 
         await send({"type": "hello", "protocol": PROTOCOL, "app": "PulseDeck", "name": socket.gethostname(),
                     "metrics_interval": METRICS_SECONDS, "commands": sorted(COMMANDS)})
-        loops = (metrics_loop, media_loop, auth_loop)
+        loops = (metrics_loop, media_loop, sessions_loop, activity_loop, auth_loop)
         AUTH = loops.index(auth_loop)
         tasks = [asyncio.create_task(loop()) for loop in loops]
         try:
@@ -253,13 +304,18 @@ def add_display_route(app, current_player, control_player, workstation_locked):
                     action = data.get("action")
                     if action not in COMMANDS:      # only playback; nothing else can be run from the panel
                         await send({"type": "error", "code": "bad_command", "message": "Команда не поддерживается."})
+                    elif action == "source":        # which player to show: view-only phones may choose too
+                        value = data.get("value")
+                        wants["source"] = value if isinstance(value, str) and len(value) <= 300 else ""
+                        wants["wake"].set()
                     elif not mobile_access.can_control(await asyncio.to_thread(mobile_access.authenticate, token)):
                         await send({"type": "error", "code": "view_only", "message": "Телефон подключён только для просмотра."})
                     elif await asyncio.to_thread(workstation_locked):
                         await send({"type": "error", "code": "locked", "message": "ПК заблокирован."})
                     else:
                         try:
-                            await run_command(action, data.get("value"))
+                            await run_command(action, data.get("value"), wants["source"])
+                            wants["wake"].set()
                         except ValueError as exc:
                             await send({"type": "error", "code": "player", "message": str(exc)})
                 else:

@@ -138,7 +138,7 @@ class DisplaySocketTests(unittest.TestCase):
                 pong = await self.receive_until(ws, "pong")
                 return hello, metrics, media, error, pong
         hello, metrics, media, error, _ = self.run_client(scenario)
-        self.assertEqual((hello["protocol"], hello["commands"]), (1, ["next", "prev", "seek", "toggle", "volume"]))
+        self.assertEqual((hello["protocol"], hello["commands"]), (1, ["next", "prev", "seek", "source", "toggle", "volume"]))
         self.assertIsNotNone(metrics["cpu"]["load"])
         self.assertTrue(metrics["disks"])
         self.assertEqual(media["session"]["title"], "After Dark")
@@ -185,6 +185,30 @@ class DisplaySocketTests(unittest.TestCase):
                         return ws.close_code
                 return None
         self.assertEqual(self.run_client(scenario), display_api.CLOSE_REVOKED)
+
+    def test_players_activity_and_source(self):
+        async def scenario(session, url, headers, ctx):
+            async with session.ws_connect(url, headers=headers, ssl=ctx) as ws:
+                sessions = await self.receive_until(ws, "sessions")
+                activity = await self.receive_until(ws, "activity")
+                await ws.send_json({"type": "command", "action": "source", "value": "pulse"})
+                for _ in range(20):
+                    media = await self.receive_until(ws, "media")
+                    if media.get("source_id") == "pulse":
+                        break
+                await ws.send_json({"type": "command", "action": "source", "value": 5})     # not a name: automatic
+                for _ in range(20):
+                    back = await self.receive_until(ws, "media")
+                    if back.get("source_id") == "":
+                        break
+                return sessions, activity, media, back
+        sessions, activity, media, back = self.run_client(scenario)
+        self.assertEqual(sessions["items"][0]["id"], "pulse")
+        self.assertEqual(sessions["items"][0]["source"], "PulseDeck")
+        self.assertIn("app", activity)
+        self.assertEqual((media["source_id"], media["session"]["title"]), ("pulse", "After Dark"))
+        self.assertEqual(back["source_id"], "")
+        self.assertEqual(self.commands, [])          # choosing a player runs nothing on the PC
 
     def test_locked_pc_shows_data_but_refuses_commands(self):
         self.locked = True

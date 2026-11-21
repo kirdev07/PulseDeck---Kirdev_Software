@@ -8,6 +8,13 @@
 [PulseDesk](https://github.com/kirdev07/PulseDeck-Mobile--KirDev-Software) и
 [PulseDeck Panel](https://github.com/kirdev07/PulseDeck-Panel_Kirdev-Software).
 
+## [Не выпущено]
+
+### Добавлено
+- Панель PulseDeck Panel получает список приложений с музыкой и может выбрать, чей трек показывать
+  и кем управлять (команда `source`), и видит, что сейчас открыто на ПК (сообщения `sessions` и
+  `activity`, см. `docs/PANEL_PROTOCOL.md`). Старые панели эти сообщения пропускают.
+
 ## [1.0.3] — 2026-11-21
 
 ### Добавлено

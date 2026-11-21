@@ -62,6 +62,18 @@ Windows не даёт их без сторонних драйверов. Дис�
 Источники — встроенный плеер PulseDeck и медиасессии Windows (GSMTC: Spotify, Яндекс Музыка,
 браузеры и др.). Полнота метаданных, обложки и управления зависят от приложения-источника.
 
+С PulseDeck 1.0.4 — ещё два сообщения (старые панели их пропускают):
+
+```json
+{"type": "sessions", "items": [{"id": "pulse", "source": "PulseDeck", "title": "After Dark", "status": "playing"}]}
+{"type": "activity", "app": "Google Chrome", "title": "YouTube", "fullscreen": false}
+```
+
+`sessions` — приложения с музыкой, из которых можно выбрать, чей трек показывать (при изменении
+списка, проверка раз в 3 с). `activity` — приложение на переднем плане ПК и заголовок его окна, раз в
+3 с при изменении, только пока панель на экране; `"app": null` — рабочий стол, ничего или ПК
+заблокирован. В `media` есть `source_id` — выбранный источник (`""` — автоматически).
+
 Ошибки: `{"type": "error", "code": "locked" | "bad_command" | "bad_message" | "player", "message": "…"}`.
 `pong` — ответ на `ping`.
 
@@ -73,6 +85,7 @@ Windows не даёт их без сторонних драйверов. Дис�
 {"type": "command", "action": "toggle"}   // toggle | next | prev
 {"type": "command", "action": "seek", "value": 42.5}     // позиция трека, секунды
 {"type": "command", "action": "volume", "value": 35}     // громкость ПК 0..100 (нужен pycaw)
+{"type": "command", "action": "source", "value": "pulse"} // чей трек показывать и кем управлять; "" — автоматически
 {"type": "ping"}
 {"type": "subscribe", "metrics": false}   // приложение ушло в фон: только трек, без метрик
 {"type": "subscribe", "interval": 3}      // период метрик 1..10 с
