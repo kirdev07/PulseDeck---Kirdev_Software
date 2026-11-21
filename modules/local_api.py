@@ -208,6 +208,10 @@ def make_app(features_getter=lambda: None, version=0, pairing=None, browser=Fals
                                              mobile_access.KIND_WEB if browser else mobile_access.KIND_APP)
             if not device:
                 return json_error(401, "Устройство не подключено или отозвано.")
+            if version == 1 and not browser and device.get("legacy"):
+                # Paired over the old HTTP protocol: the token may have been seen on the network.
+                return json_error(401, "Этот телефон подключён по старому протоколу без шифрования. "
+                                       "Подключите его заново по коду (TLS).")
             if browser and not (request.secure and device.get("secure") and mobile_access.can_control(device)):
                 return json_error(403, "Управление ПК — только в защищённом режиме (HTTPS) и с доступом «Полный».")
             if not mobile_access.can_control(device) and (path not in VIEW_ONLY_PATHS or request.method != "GET"):
@@ -668,7 +672,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None, browser=Fals
                 return json_error(408, "На ПК не ответили на запрос.")
             if not allowed:
                 return json_error(403, "Владелец ПК отклонил подключение.")
-            token = await asyncio.to_thread(mobile_access.add_device, device)
+            token = await asyncio.to_thread(mobile_access.add_device, device, legacy=True)
         logger.info("Phone paired: %s (%s)", device, request.remote)
         return web.json_response({"ok": True, "token": token, "name": socket.gethostname()})
 

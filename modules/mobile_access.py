@@ -46,10 +46,14 @@ def load():
             data["port"], changed = DEFAULT_PORT, True
         if not isinstance(data.get("tls_port"), int):
             data["tls_port"], changed = DEFAULT_TLS_PORT, True
-        # legacy_http: API v0 without encryption, kept until every phone runs a v1 client.
-        for key, default in (("enabled", True), ("allow_pairing", True), ("legacy_http", True)):
+        # legacy_http: API v0 without encryption (only the old Pulse Mobile app needs it). Off by
+        # default; settings saved before 1.0.3 had it on and are switched off once (it can be
+        # turned on again in Настройки → Телефон).
+        for key, default in (("enabled", True), ("allow_pairing", True), ("legacy_http", False)):
             if type(data.get(key)) is not bool:
                 data[key], changed = default, True
+        if not data.get("legacy_off_once"):
+            data["legacy_http"], data["legacy_off_once"], changed = False, True, True
         devices = data.get("devices")
         if not isinstance(devices, list):
             data["devices"], changed = [], True
@@ -76,9 +80,11 @@ KIND_APP = "app"          # PulseDesk / PulseDeck Panel (API v1 over TLS); devic
 KIND_WEB = "web"          # a phone browser with the web panel
 
 
-def add_device(name, kind=KIND_APP, access=None, secure=None):
+def add_device(name, kind=KIND_APP, access=None, secure=None, legacy=False):
     """Register a phone and return its token (shown only once). secure: a browser paired
-    over HTTPS (its token never crossed the network unencrypted) — only those may control."""
+    over HTTPS (its token never crossed the network unencrypted) — only those may control.
+    legacy: an app paired over the old HTTP protocol (v0) — its token crossed the network
+    unencrypted, so the TLS API (v1) does not accept it."""
     with LOCK:
         data = load()
         if len(data["devices"]) >= MAX_DEVICES:
@@ -92,6 +98,8 @@ def add_device(name, kind=KIND_APP, access=None, secure=None):
             device["access"] = access
         if secure is not None:
             device["secure"] = bool(secure)
+        if legacy:
+            device["legacy"] = True
         data["devices"].append(device)
         save(data)
         return token
@@ -129,25 +137,35 @@ def remove_device(device_id):
 
 class PairingCodes:
     """One-time 6-digit codes for API v1 pairing. The owner starts a code on the PC; the
-    phone must send it within PAIR_CODE_SECONDS, with at most PAIR_CODE_ATTEMPTS tries."""
+    phone must send it within PAIR_CODE_SECONDS, with at most PAIR_CODE_ATTEMPTS tries.
+
+    Two codes are shown together: the main one (apps over TLS, browsers over HTTPS — full
+    trust) and a «view only» one for a browser on plain HTTP. Each is good only on its own
+    channel, so a code seen on the unencrypted page can never be redeemed for full access.
+    The main code typed on the plain page is burnt (it was exposed). Either code, used once,
+    ends both."""
 
     def __init__(self, clock=time.monotonic):
         self.clock = clock
         self._lock = threading.Lock()
         self._code = None
+        self._view = None
         self._expires = 0.0
         self._attempts = 0
 
     def start(self):
         with self._lock:
             self._code = f"{secrets.randbelow(1_000_000):06d}"
+            self._view = self._code
+            while self._view == self._code:
+                self._view = f"{secrets.randbelow(1_000_000):06d}"
             self._expires = self.clock() + PAIR_CODE_SECONDS
             self._attempts = 0
             return self._code
 
     def cancel(self):
         with self._lock:
-            self._code = None
+            self._code = self._view = None
 
     def remaining(self):
         with self._lock:
@@ -166,19 +184,31 @@ class PairingCodes:
         """The code to show on the PC screen, '' when none is active."""
         return (self._code or "") if self.active() else ""
 
-    def verify(self, code):
-        """True once for the right code; wrong guesses burn attempts, then the code dies."""
+    def current_view(self):
+        """The «view only» code for a browser on plain HTTP, '' when none is active."""
+        return (self._view or "") if self.active() else ""
+
+    def verify(self, code, plain=False):
+        """True once for the right code of this channel (plain: the unencrypted HTTP page);
+        wrong guesses burn attempts, then the codes die."""
+        return self.check(code, plain) == "ok"
+
+    def check(self, code, plain=False):
+        """'ok', 'wrong', or 'exposed' (the main code sent over plain HTTP: now dead)."""
         if not self.active():
-            return False
+            return "wrong"
+        given = str(code or "").replace(" ", "").strip().encode()
         with self._lock:
-            ok = hmac.compare_digest(str(code or "").strip().encode(), self._code.encode())
-            if ok:
-                self._code = None
-                return True
+            if hmac.compare_digest(given, (self._view if plain else self._code).encode()):
+                self._code = self._view = None
+                return "ok"
+            if plain and hmac.compare_digest(given, self._code.encode()):
+                self._code = self._view = None
+                return "exposed"
             self._attempts += 1
             if self._attempts >= PAIR_CODE_ATTEMPTS:
-                self._code = None
-            return False
+                self._code = self._view = None
+            return "wrong"
 
 
 PAIRING = PairingCodes()

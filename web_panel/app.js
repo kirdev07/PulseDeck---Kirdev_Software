@@ -32,6 +32,7 @@ const state = {
   metrics: null, volume: null, online: false,
 };
 let pendingCode = '';        // pairing code from the QR, kept while the user installs the certificate
+let pendingView = '';        // its «view only» twin: the only code the plain HTTP page may send
 
 // ----- storage -----
 const store = {
@@ -209,6 +210,7 @@ async function checkSecure(manual) {
 
 // ----- pairing -----
 function showPairing(reason) {
+  $('plainhint').hidden = location.protocol !== 'http:';
   only('pairing');
   const error = $('pairerror');
   error.hidden = !reason;
@@ -1854,10 +1856,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   $('pairform').addEventListener('submit', (event) => { event.preventDefault(); pair($('codeinput').value); });
   $('check-https').addEventListener('click', () => checkSecure(true));
-  $('skip-https').addEventListener('click', () => { store.set(SKIP_STORE, '1'); startPanel(pendingCode); });
+  $('skip-https').addEventListener('click', () => { store.set(SKIP_STORE, '1'); startPanel(pendingView); });
 
   // QR code from the PC: …/#pair=123456 — used once, then removed from the address bar.
-  pendingCode = new URLSearchParams(location.hash.slice(1)).get('pair') || '';
+  const fragment = new URLSearchParams(location.hash.slice(1));
+  pendingCode = fragment.get('pair') || '';
+  pendingView = fragment.get('view') || '';
 
   if (location.protocol === 'http:') {
     // Plain HTTP: prefer the HTTPS panel when this phone already trusts the PC.
@@ -1871,7 +1875,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       showSetup();          // new phone: offer the secure mode first; the code waits
       return;
     }
-    startPanel(pendingCode);
+    startPanel(pendingView);    // plain HTTP: only the «view only» code may travel unencrypted
     return;
   }
   if (pendingCode) history.replaceState(null, '', location.pathname);

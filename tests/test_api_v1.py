@@ -91,7 +91,9 @@ class ApiV1Tests(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.root = Path(self.dir.name)
         (self.root / "local_api.json").write_text(json.dumps({"port": 0, "tls_port": 0, "enabled": True,
-                                                             "allow_pairing": False, "devices": []}), encoding="utf-8")
+                                                             "allow_pairing": False, "devices": [],
+                                                             "legacy_http": True, "legacy_off_once": True}),
+                                                 encoding="utf-8")
         self.patches = [mock.patch.object(mobile_access, "PATH", str(self.root / "local_api.json")),
                         mock.patch.object(mobile_access, "PAIRING", mobile_access.PairingCodes()),
                         mock.patch("modules.monitor.workstation_locked", return_value=False),
@@ -161,9 +163,28 @@ class ApiV1Tests(unittest.TestCase):
             urllib.request.urlopen(f"http://127.0.0.1:{self.http_port}/api/status", timeout=5)
         self.assertEqual(caught.exception.code, 401)
 
-    def test_token_from_v0_pairing_works_on_v1(self):
-        token = mobile_access.add_device("Old phone")
+    def test_token_from_code_pairing_works_on_v1(self):
+        token = mobile_access.add_device("Phone")
         self.assertEqual(self.call("/api/v1/programs", token=token)[0], 200)
+
+    def test_token_from_v0_pairing_is_refused_on_v1(self):
+        # Its token crossed the network unencrypted: the phone must pair again by code.
+        token = mobile_access.add_device("Old phone", legacy=True)
+        status, body = self.call("/api/v1/programs", token=token)
+        self.assertEqual(status, 401)
+        self.assertIn("по коду", body["error"])
+
+    def test_view_code_only_for_plain_http_and_main_code_burnt_there(self):
+        codes = mobile_access.PairingCodes()
+        code = codes.start()
+        view = codes.current_view()
+        self.assertNotEqual(code, view)
+        self.assertFalse(codes.verify(view))                   # the view code never works over TLS/HTTPS
+        self.assertEqual(codes.check(code, plain=True), "exposed")   # main code typed on the plain page: burnt
+        self.assertFalse(codes.verify(code))
+        code = codes.start()
+        self.assertTrue(codes.verify(codes.current_view(), plain=True))
+        self.assertFalse(codes.verify(code))                   # one pairing ends both codes
 
 
 class DiscoveryTests(unittest.TestCase):

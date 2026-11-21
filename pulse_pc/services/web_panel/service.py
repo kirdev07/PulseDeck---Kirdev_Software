@@ -162,9 +162,17 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
         if not pairing.active():
             return web.json_response({"ok": False, "error": "На ПК откройте «Телефон» → «Показать код» "
                                                             "(выберите «Браузер»)."}, status=403)
-        if not pairing.verify(body.get("code")):
+        result = pairing.check(body.get("code"), plain=not request.secure)
+        if result == "exposed":
+            logger.warning("Веб-панель: основной код отправлен без шифрования (%s) — код отменён", request.remote)
+            return web.json_response({"ok": False, "error": (
+                "Это код для защищённого режима, а страница открыта без шифрования — код отменён. Покажите новый "
+                "на ПК и введите код «Только просмотр» или установите сертификат.")}, status=403)
+        if result != "ok":
             logger.warning("Веб-панель: неверный код подключения от %s", request.remote)
-            text = "Неверный код." if pairing.active() else "Код больше не действует. Покажите новый на ПК."
+            text = ("Неверный код." if pairing.active() else "Код больше не действует. Покажите новый на ПК.")
+            if not request.secure and pairing.active():
+                text = "Неверный код. Без шифрования нужен код «Только просмотр» — он на ПК под основным."
             return web.json_response({"ok": False, "error": text}, status=403)
         # Paired over HTTPS with the code the owner showed on the PC: trusted like the apps
         # («Полный»). Over plain HTTP the token crossed the network unencrypted: view only.

@@ -234,11 +234,12 @@ class PhoneScreen(QWidget):
             self.code_label.setText(f"{code[:3]} {code[3:]}")
             if web_mode:
                 from pulse_pc.services.web_panel import settings as web_settings
-                link = web_settings.pairing_link(web.addresses[0], web.port, code)
+                view = mobile_access.PAIRING.current_view()
+                link = web_settings.pairing_link(web.addresses[0], web.port, code, view)
                 self._draw_qr(link, (MODE_WEB, code))
                 self.qr.setVisible(True)
                 self.code_detail.setText(f"Действует ещё {left} с\nили откройте {web_settings.address(web.addresses[0], web.port)}"
-                                         " и введите код")
+                                         f" и введите код\nБез сертификата (только просмотр): {view[:3]} {view[3:]}")
             else:
                 config_dir = getattr(getattr(self.services, "local_api", None), "config_dir", None)
                 full = tls.fingerprint(config_dir) if config_dir else ""

@@ -139,7 +139,8 @@ class ServiceTestCase(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         root = Path(self.dir.name)
         (root / "local_api.json").write_text(json.dumps({"port": 0, "tls_port": 0, "enabled": True, "allow_pairing": False,
-                                                        "devices": []}), encoding="utf-8")
+                                                        "devices": [], "legacy_http": True, "legacy_off_once": True}),
+                                            encoding="utf-8")
         self.patches = [
             mock.patch.object(mobile_access, "PATH", str(root / "local_api.json")),
             mock.patch("modules.utils.cleanup_old_files", lambda *_: None),

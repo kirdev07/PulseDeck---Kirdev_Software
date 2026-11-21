@@ -30,6 +30,8 @@ class WebPanelSettingsTest(unittest.TestCase):
 
     def test_code_only_in_fragment(self):
         self.assertEqual(web_settings.pairing_link("192.168.1.5", 8780, "123456"), "http://192.168.1.5:8780/#pair=123456")
+        self.assertEqual(web_settings.pairing_link("192.168.1.5", 8780, "123456", "654321"),
+                         "http://192.168.1.5:8780/#pair=123456&view=654321")
 
 
 class HomeCertificateTest(unittest.TestCase):
@@ -54,6 +56,34 @@ class HomeCertificateTest(unittest.TestCase):
         verifier = PolicyBuilder().store(Store([ca])).build_server_verifier(x509.IPAddress(ipaddress.ip_address("192.168.10.6")))
         self.assertEqual(len(verifier.verify(leaf, [])), 2)
         self.assertLessEqual((leaf.not_valid_after_utc - leaf.not_valid_before_utc).days, 397)   # Apple: <= 825
+        constraints = ca.extensions.get_extension_for_class(x509.NameConstraints).value
+        self.assertIn(x509.DNSName("invalid"), constraints.permitted_subtrees)   # no real site name, even with the key
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.x509.oid import NameOID
+        ca_key = serialization.load_pem_private_key((Path(self.dir) / tls.FOLDER / tls.CA_KEY).read_bytes(), b"p" * 32)
+        fake_key = ec.generate_private_key(ec.SECP256R1())
+        fake = (x509.CertificateBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "x")]))
+                .issuer_name(ca.subject).public_key(fake_key.public_key()).serial_number(1)
+                .not_valid_before(leaf.not_valid_before_utc).not_valid_after(leaf.not_valid_after_utc)
+                .add_extension(x509.SubjectAlternativeName([x509.DNSName("www.google.com")]), critical=False)
+                .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.SERVER_AUTH]), critical=False)
+                .sign(ca_key, hashes.SHA256()))
+        site = PolicyBuilder().store(Store([ca])).build_server_verifier(x509.DNSName("www.google.com"))
+        with self.assertRaises(Exception):          # a stolen key still cannot vouch for a real site
+            site.verify(fake, [])
+
+    def test_old_authority_without_site_constraint_is_replaced(self):
+        from cryptography import x509
+        from pulse_pc.services.web_panel import tls
+        tls.ensure_server_certificate(self.dir, ["192.168.10.6"])
+        with mock.patch.object(tls, "_constrains_names", return_value=False):
+            first = (Path(self.dir) / tls.FOLDER / tls.CA_CERT).read_bytes()
+            tls.ensure_authority(self.dir)                     # «old» one: made again
+        self.assertNotEqual((Path(self.dir) / tls.FOLDER / tls.CA_CERT).read_bytes(), first)
+        self.assertFalse((Path(self.dir) / tls.FOLDER / tls.CERT).exists())   # server cert of the old one dropped
+        self.assertTrue(tls._constrains_names(x509.load_pem_x509_certificate(
+            (Path(self.dir) / tls.FOLDER / tls.CA_CERT).read_bytes())))
 
     def test_certificate_is_reused_and_renewed_on_new_address(self):
         from pulse_pc.services.web_panel import tls
@@ -106,8 +136,11 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
         for patch in self.patches:
             patch.stop()
 
-    async def paired(self):
+    async def paired(self, secure=False):
+        """Pair a browser: over HTTPS with the main code, over plain HTTP with the «view only» one."""
         code = self.pairing.start()
+        if not secure:
+            code = self.pairing.current_view()
         response = await self.client.post("/pair", json={"code": code, "name": "Браузер (iPhone)"})
         self.assertEqual(response.status, 200)
         return (await response.json())["token"]
@@ -128,6 +161,13 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(missing.status, 404)
         self.assertIn("frame-ancestors 'none'", missing.headers["Content-Security-Policy"])   # errors too
 
+    async def test_main_code_sent_over_plain_http_is_burnt(self):
+        code = self.pairing.start()
+        response = await self.client.post("/pair", json={"code": code})          # the test server is plain HTTP
+        self.assertEqual(response.status, 403)
+        self.assertIn("отменён", (await response.json())["error"])
+        self.assertFalse(self.pairing.active())        # an eavesdropper cannot use it on HTTPS now
+
     async def test_pairing_needs_the_code_shown_on_the_pc(self):
         response = await self.client.post("/pair", json={"code": "123456"})
         self.assertEqual(response.status, 403)          # no code started on the PC
@@ -144,7 +184,7 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_https_pairing_is_trusted_like_the_apps(self):
         with mock.patch.object(web.BaseRequest, "secure", new_callable=mock.PropertyMock, return_value=True):
-            await self.paired()
+            await self.paired(secure=True)
         device = mobile_access.load()["devices"][0]
         self.assertTrue(device["secure"])
         self.assertEqual(device["access"], mobile_access.ACCESS_FULL)
@@ -181,7 +221,7 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
     async def full_access(self, secure_pairing):
         """A browser with «Полный»; secure_pairing: paired over HTTPS."""
         with mock.patch.object(web.BaseRequest, "secure", new_callable=mock.PropertyMock, return_value=secure_pairing):
-            token = await self.paired()
+            token = await self.paired(secure=secure_pairing)
         mobile_access.set_access(mobile_access.load()["devices"][0]["id"], mobile_access.ACCESS_FULL)
         return token
 

@@ -117,6 +117,7 @@ class SettingsScreenTests(unittest.TestCase):
         def texts():
             lines = self.screen.security_lines
             return " ".join(lines.itemAt(i).widget().text.text() for i in range(lines.count() - 1))
+        mobile_access.set_option("legacy_http", True)       # off by default now: switched on to see the warning
         self.screen.refresh()
         self.assertIn("ID администратора не задан", texts())
         self.assertIn("старый протокол без шифрования", texts())

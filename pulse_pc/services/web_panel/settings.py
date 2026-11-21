@@ -58,6 +58,7 @@ def setup_address(host, port):
     return f"http://{host}:{port}/"
 
 
-def pairing_link(host, port, code):
-    """QR code for a new browser: the code travels in the #fragment, not in the request."""
-    return f"http://{host}:{port}/#pair={code}"
+def pairing_link(host, port, code, view=""):
+    """QR code for a new browser: the codes travel in the #fragment, not in the request. The
+    page uses `pair` over HTTPS and `view` (view only) if it stays on plain HTTP."""
+    return f"http://{host}:{port}/#pair={code}" + (f"&view={view}" if view else "")

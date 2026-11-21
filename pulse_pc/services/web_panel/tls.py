@@ -5,9 +5,11 @@ installs this PC's authority once (iPhone: a profile, Android: «Сертифи�
 https://<pc>:8781 opens without warnings and the browser may control music.
 
 Safety of the authority:
-  * Name Constraints: as an IP-address authority it can vouch only for home addresses
-    (10/8, 172.16/12, 192.168/16, 169.254/16, 127/8). The constraint limits IP addresses only,
-    not site names, so the key itself is the protection: never leave the PC (next point);
+  * Name Constraints: it can vouch only for home addresses (10/8, 172.16/12, 192.168/16,
+    169.254/16, 127/8) and, for site names and e-mail, only for the reserved «.invalid»
+    (RFC 6761, never a real site). Even with its key stolen nobody could fake another website
+    with it. An authority made before this (IP addresses only) is replaced once; the phone
+    then installs the new one;
   * its private key is stored encrypted, the password in the DPAPI secret store, like the
     API v1 certificate (services/local_api/tls.py).
 
@@ -34,6 +36,17 @@ CA_DAYS = 3650
 SERVER_DAYS = 397
 RENEW_DAYS = 30
 HOME_NETWORKS = ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "127.0.0.0/8")
+NO_SITES = "invalid"        # the only site name (and e-mail domain) the authority may vouch for
+
+
+def _constrains_names(cert):
+    """Does this authority also limit site names (not only IP addresses)?"""
+    from cryptography import x509
+    try:
+        constraints = cert.extensions.get_extension_for_class(x509.NameConstraints).value
+    except x509.ExtensionNotFound:
+        return False
+    return any(isinstance(n, x509.DNSName) for n in constraints.permitted_subtrees or ())
 
 
 def _folder(config_dir):
@@ -76,7 +89,10 @@ def ensure_authority(config_dir):
     password = _password(config_dir)
     if cert_path.exists() and key_path.exists():
         try:
-            return x509.load_pem_x509_certificate(cert_path.read_bytes()), _read_key(key_path, password)
+            cert = x509.load_pem_x509_certificate(cert_path.read_bytes())
+            if _constrains_names(cert):
+                return cert, _read_key(key_path, password)
+            # made before site names were constrained: replaced by a new one (below)
         except (ValueError, TypeError):
             pass        # unreadable (password lost with the Windows profile): make a new one
     folder.mkdir(parents=True, exist_ok=True)
@@ -84,7 +100,8 @@ def ensure_authority(config_dir):
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, f"PulseDeck {socket.gethostname()}"[:64]),
                       x509.NameAttribute(NameOID.ORGANIZATION_NAME, "PulseDeck (домашний сертификат)")])
     now = _now()
-    permitted = [x509.IPAddress(ipaddress.ip_network(net)) for net in HOME_NETWORKS]
+    permitted = [x509.IPAddress(ipaddress.ip_network(net)) for net in HOME_NETWORKS] + \
+        [x509.DNSName(NO_SITES), x509.RFC822Name(NO_SITES)]
     cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
             .serial_number(x509.random_serial_number())
             .not_valid_before(now - datetime.timedelta(minutes=5))
@@ -139,7 +156,7 @@ def ensure_server_certificate(config_dir, addresses):
     key = ec.generate_private_key(ec.SECP256R1())
     now = _now()
     cert = (x509.CertificateBuilder()
-            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, wanted[0])]))
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "PulseDeck")]))
             .issuer_name(ca_cert.subject).public_key(key.public_key())
             .serial_number(x509.random_serial_number())
             .not_valid_before(now - datetime.timedelta(minutes=5))

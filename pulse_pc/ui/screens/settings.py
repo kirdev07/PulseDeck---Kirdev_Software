@@ -202,8 +202,9 @@ class SettingsScreen(QWidget):
         self.legacy_http = Toggle(data["legacy_http"])
         self.legacy_http.toggled.connect(lambda on: self.set_phone_option("legacy_http", on))
         card.body.addLayout(setting_row("Старый протокол без шифрования",
-                                        "Нужен только старому приложению Pulse Mobile. PulseDesk и PulseDeck Panel подключаются "
-                                        "по коду (TLS) — его можно выключить.", self.legacy_http))
+                                        "Нужен только старому приложению Pulse Mobile; по умолчанию выключен. В той же Wi-Fi "
+                                        "его ключи можно перехватить. PulseDesk и PulseDeck Panel подключаются по коду (TLS).",
+                                        self.legacy_http))
         card.body.addWidget(divider())
         card.body.addLayout(setting_row("Порты", "HTTP — старый протокол, TLS — защищённый, UDP — поиск ПК.",
                                         label(f"HTTP {data['port']} · TLS {data['tls_port']} · UDP "
