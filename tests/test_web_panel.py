@@ -149,6 +149,10 @@ class WebPanelServerTest(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(device["secure"])
         self.assertEqual(device["access"], mobile_access.ACCESS_FULL)
 
+    async def test_foreign_site_name_is_refused(self):
+        self.assertEqual((await self.client.get("/", headers={"Host": "rebind.example.com"})).status, 421)
+        self.assertEqual((await self.client.get("/", headers={"Host": "192.168.10.6:8780"})).status, 200)
+
     async def test_socket_needs_a_browser_token(self):
         self.assertEqual((await self.client.get("/ws?t=wrong")).status, 403)
         app_token = mobile_access.add_device("PulseDesk")

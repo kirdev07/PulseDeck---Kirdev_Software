@@ -5,8 +5,9 @@ installs this PC's authority once (iPhone: a profile, Android: «Сертифи�
 https://<pc>:8781 opens without warnings and the browser may control music.
 
 Safety of the authority:
-  * Name Constraints: it can vouch only for home addresses (10/8, 172.16/12, 192.168/16,
-    169.254/16, 127/8). Even with its key stolen nobody could fake another website with it;
+  * Name Constraints: as an IP-address authority it can vouch only for home addresses
+    (10/8, 172.16/12, 192.168/16, 169.254/16, 127/8). The constraint limits IP addresses only,
+    not site names, so the key itself is the protection: never leave the PC (next point);
   * its private key is stored encrypted, the password in the DPAPI secret store, like the
     API v1 certificate (services/local_api/tls.py).
 

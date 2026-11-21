@@ -15,7 +15,7 @@ THROTTLE_RATE = 0.5 # Ограничение в 0.5 секунд между де
 class AuthMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data: dict):
         if not event.from_user:
-            return await handler(event, data)
+            return None             # no sender, no way to check the admin: never run a handler
         
         user_id = event.from_user.id
         

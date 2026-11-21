@@ -2,11 +2,14 @@
 #
 #   powershell -File tools\dev\android-tests.ps1 PulseDeck-MobileAPP
 #   powershell -File tools\dev\android-tests.ps1 PulseDeck-PanelAPP
+#
+# The apps are separate repositories next to this one (C:\My Project\PulseDeck-MobileAPP, …);
+# a full path to an app folder works too.
 param([Parameter(Mandatory)] [string] $App)
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path (Split-Path $PSScriptRoot)
-$appDir = Join-Path $root $App
+$appDir = if (Test-Path $App) { (Resolve-Path $App).Path } else { Join-Path (Split-Path $root) $App }
 if (-not $env:JAVA_HOME) { $env:JAVA_HOME = Join-Path $HOME '.jdks\jbr-21.0.11' }
 $env:CP_OUT = Join-Path $env:TEMP "pulsedeck-test-cp-$App.txt"
 

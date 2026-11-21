@@ -22,9 +22,7 @@ build/
 .idea/
 .vscode/
 
-# Android-приложение хранится отдельно
-Pulse_Pc_Mobile/
-Pulse_Pc_Watch/
+# Android-приложения — отдельные репозитории рядом: C:\My Project\PulseDeck-MobileAPP и PulseDeck-PanelAPP
 PulseDeck-PanelAPP/
 PulseDeck-MobileAPP/
 

@@ -47,6 +47,28 @@ class LocalApiSecurityTests(AioHTTPTestCase):
             self.assertIn("Внутренняя ошибка", data["error"])
 
 
+class HostCheckTests(AioHTTPTestCase):
+    """DNS rebinding: a page whose own domain points at the PC must not reach the API."""
+    async def get_application(self):
+        return make_app()
+
+    async def test_foreign_site_name_is_refused(self):
+        response = await self.client.request("GET", "/api/ping", headers={"Host": "evil.example.com:8765"})
+        self.assertEqual(response.status, 421)
+
+    async def test_addresses_localhost_and_pc_name_pass(self):
+        import socket
+        for host in ("192.168.1.5:8765", "127.0.0.1", "localhost:8767", f"{socket.gethostname()}:8765"):
+            response = await self.client.request("GET", "/api/ping", headers={"Host": host})
+            self.assertEqual(response.status, 200, host)
+
+    async def test_device_names_are_one_line(self):
+        from modules.local_api import clean_device_name
+        self.assertEqual(clean_device_name("Pixel\n[ERROR] forged line"), "Pixel [ERROR] forged line")
+        self.assertEqual(clean_device_name("  "), "Телефон")
+        self.assertEqual(len(clean_device_name("x" * 100)), 40)
+
+
 class LanOnlyTests(AioHTTPTestCase):
     async def get_application(self):
         return make_app()

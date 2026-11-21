@@ -9,6 +9,7 @@ import ipaddress
 import json
 import logging
 import os
+import re
 import socket
 import subprocess
 import time
@@ -60,6 +61,30 @@ def is_private_ip(ip):
     if getattr(address, "ipv4_mapped", None):
         address = address.ipv4_mapped
     return address.is_private or address.is_loopback or address.is_link_local
+
+
+def host_allowed(request):
+    """DNS rebinding guard: a web page that points its own domain at this PC's address must
+    not reach the API from the owner's browser. Phones and the panel use the IP (or
+    localhost over USB), so only an IP literal, localhost or this PC's own name is accepted."""
+    try:
+        name = (request.url.host or "").strip("[]").rstrip(".").lower()
+    except (ValueError, TypeError):
+        return False
+    if not name:
+        return False
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        pass
+    pc = socket.gethostname().lower()
+    return name in ("localhost", pc, pc + ".local") or name.endswith(".localhost")
+
+
+def clean_device_name(raw, default="Телефон"):
+    """A phone's name as shown on the PC and in the log: one line, at most 40 characters."""
+    return " ".join(str(raw or "").split())[:40] or default
 
 
 def ask_owner(text):
@@ -168,6 +193,9 @@ def make_app(features_getter=lambda: None, version=0, pairing=None, browser=Fals
         if not is_private_ip(request.remote or ""):
             logger.warning("Отклонён запрос не из локальной сети: %s %s", request.remote, request.path)
             return json_error(403, "PulseDeck принимает запросы только из локальной сети.")
+        if not host_allowed(request):
+            logger.warning("Отклонён запрос с чужим адресом сайта (Host: %s) от %s", request.host[:60], request.remote)
+            return json_error(421, "Откройте PulseDeck по IP-адресу ПК.")
         path = request.path
         if prefix and path.startswith(prefix + "/"):
             path = path[len(prefix):]
@@ -419,7 +447,8 @@ def make_app(features_getter=lambda: None, version=0, pairing=None, browser=Fals
     async def files_upload(request):
         from pathlib import Path
         from modules.transfer_history import record_transfer
-        name = Path(request.query.get("name", "file").replace("\\", "/")).name or "file"
+        name = Path(request.query.get("name", "file").replace("\\", "/")).name
+        name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name).rstrip(" .")[:160] or "file"
         target_dir = Path(config.FILES_DIR)
         target_dir.mkdir(exist_ok=True)
         target = target_dir / name
@@ -628,7 +657,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None, browser=Fals
             return json_error(429, "Слишком много запросов подключения. Попробуйте через минуту.")
         recent.append(now)
         try:
-            device = str((await request.json()).get("device", ""))[:40] or "Телефон"
+            device = clean_device_name((await request.json()).get("device"))
         except ValueError:
             device = "Телефон"
         async with pairing_lock:
@@ -652,7 +681,7 @@ def make_app(features_getter=lambda: None, version=0, pairing=None, browser=Fals
             body = await request.json()
         except ValueError:
             body = {}
-        device = str(body.get("device", ""))[:40] or "Телефон"
+        device = clean_device_name(body.get("device") if isinstance(body, dict) else None)
         if not pairing.active():
             return json_error(403, "Сначала нажмите «Подключить по коду» на ПК.")
         if not pairing.verify(body.get("code")):

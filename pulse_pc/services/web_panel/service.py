@@ -86,7 +86,7 @@ def may_control(device, secure_connection):
 
 def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_port=0, features_getter=lambda: None):
     from modules.display_api import MetricsReader, _same_track, media_message, system_volume_state
-    from modules.local_api import is_private_ip
+    from modules.local_api import host_allowed, is_private_ip
     from modules.monitor import workstation_locked
     from modules import player_access
 
@@ -98,6 +98,8 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
     async def guard(request, handler):
         if not is_private_ip(request.remote):
             return web.Response(status=403, text="PulseDeck: только для домашней сети.")
+        if not host_allowed(request):            # DNS rebinding: a foreign site's name pointing here
+            return web.Response(status=421, text="PulseDeck: откройте панель по IP-адресу ПК.")
         try:
             response = await handler(request)
         except web.HTTPException as exc:      # 403/404 … get the same headers
@@ -194,7 +196,7 @@ def make_app(on_clients=lambda n: None, pairing=None, config_dir=None, https_por
         device = await asyncio.to_thread(browser, str(body.get("t", "")))
         if not device:
             return None, web.json_response({"ok": False, "error": "not_paired"}, status=403)
-        if not request.secure:
+        if not request.secure or not device.get("secure"):
             return None, web.json_response({"ok": False, "error": "Уведомления — только в защищённом режиме (HTTPS)."},
                                            status=403)
         return (device, body), None

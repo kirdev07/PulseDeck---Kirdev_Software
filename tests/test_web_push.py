@@ -45,6 +45,14 @@ class PushLogicTest(unittest.TestCase):
         self.assertTrue(push.valid_subscription(SUB))
         self.assertFalse(push.valid_subscription({"endpoint": "http://evil", "keys": SUB["keys"]}))
 
+    def test_only_browser_push_services(self):
+        for endpoint in ("https://fcm.googleapis.com/fcm/send/abc", "https://web.push.apple.com/x",
+                         "https://updates.push.services.mozilla.com/wpush/v2/x", "https://db5p.notify.windows.com/w/?t=1"):
+            self.assertTrue(push.valid_subscription({**SUB, "endpoint": endpoint}), endpoint)
+        for endpoint in ("https://192.168.1.1/admin", "https://evil.com/web.push.apple.com",
+                         "https://web.push.apple.com.evil.com/x", "http://fcm.googleapis.com/x"):
+            self.assertFalse(push.valid_subscription({**SUB, "endpoint": endpoint}), endpoint)
+
     def test_revoked_browser_loses_its_subscription(self):
         mobile_access.add_device("Браузер (iPhone)", mobile_access.KIND_WEB, mobile_access.ACCESS_FULL, True)
         device = mobile_access.load()["devices"][0]["id"]

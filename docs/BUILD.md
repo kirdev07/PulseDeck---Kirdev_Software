@@ -42,7 +42,7 @@ winget install JRSoftware.InnoSetup
 - модули Qt, которые не импортирует ни один файл PulseDeck: WebEngine, QML/Quick, 3D, Charts,
   PDF, Designer, SQL, Bluetooth и т. п.; их DLL и плагины;
 - переводы Qt, кроме русского и английского;
-- `tkinter` (нужен только старому самоустановщику `PulseDeck.pyw`), `pydoc`, `test`, `lib2to3`.
+- `tkinter` (программа его не использует), `pydoc`, `test`, `lib2to3`.
 
 `unittest` **оставлен**: aiogram импортирует `unittest.mock` при запуске. Без него собранная
 программа запускалась, но фоновые службы падали — это выявил пробный запуск, поэтому каждый

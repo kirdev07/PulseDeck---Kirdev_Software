@@ -95,10 +95,23 @@ def clean_limits(raw):
     return limits
 
 
+# The push services of browsers (Safari/iOS, Chrome/Android, Firefox, Edge). The PC posts
+# notices only there, never to an address a page made up (a LAN device, for example).
+PUSH_SERVICES = ("web.push.apple.com", "fcm.googleapis.com", "android.googleapis.com",
+                 "push.services.mozilla.com", "notify.windows.com")
+
+
 def valid_subscription(sub):
+    from urllib.parse import urlsplit
     keys = (sub or {}).get("keys") or {}
     endpoint = str((sub or {}).get("endpoint", ""))
-    return endpoint.startswith("https://") and len(endpoint) < 1000 and \
+    try:
+        parts = urlsplit(endpoint)
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        return False
+    known = any(host == s or host.endswith("." + s) for s in PUSH_SERVICES)
+    return parts.scheme == "https" and known and len(endpoint) < 1000 and \
         all(isinstance(keys.get(k), str) and 10 < len(keys[k]) < 200 for k in ("p256dh", "auth"))
 
 

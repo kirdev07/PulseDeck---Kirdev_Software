@@ -121,8 +121,8 @@ irm https://raw.githubusercontent.com/kirdev07/PulseDeck---Kirdev_Software/main/
 ```
 
 **Или вручную** со страницы **[Releases](https://github.com/kirdev07/PulseDeck---Kirdev_Software/releases/latest)**:
-**`PulseDeck-1.0.0-Setup.exe`** — установщик, **`PulseDeck-1.0.0-Portable.zip`** — портативная версия
-без установки. Права администратора не нужны.
+**`PulseDeck-<версия>-Setup.exe`** — установщик, **`PulseDeck-<версия>-Portable.zip`** — портативная версия
+без установки (например, `PulseDeck-1.0.2-Setup.exe`). Права администратора не нужны.
 
 Дальше PulseDeck **обновляется сам** с GitHub: уведомление в трее, затем **Настройки → Обновления** —
 одна кнопка, и новая версия ставится поверх с сохранением настроек.
