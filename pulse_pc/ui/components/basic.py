@@ -133,3 +133,8 @@ class EmptyState(QWidget):
             body.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Minimum)
             body.setFixedWidth(420)
             column.addWidget(body, 0, Qt.AlignmentFlag.AlignHCenter)
+        # The wrapped text under-reports its height; without a floor a tight card squeezed the
+        # icon onto the title. Icon + title + up to three lines of text + spacing.
+        lines = 0 if not text else 3
+        self.setMinimumHeight(52 + tokens.SPACE_2 + heading.sizeHint().height()
+                              + (tokens.SPACE_2 + heading.fontMetrics().lineSpacing() * lines if lines else 0) + 16)

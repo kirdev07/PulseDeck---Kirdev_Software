@@ -28,7 +28,21 @@ def create_application(argv=None):
     font.setHintingPreference(QFont.HintingPreference.PreferNoHinting)
     app.setFont(font)
     app.setStyleSheet(stylesheet())
+    _russian_qt(app)
     return app
+
+
+def _russian_qt(app):
+    """Qt's own words in Russian: «Да / Нет / Отмена» in message boxes, file dialogs, the
+    context menu of text fields (the Russian Qt translations ship with the build)."""
+    from PySide6.QtCore import QLibraryInfo, QLocale, QTranslator
+    folder = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    app._translators = []
+    for name in ("qtbase", "qt"):
+        translator = QTranslator(app)
+        if translator.load(QLocale("ru"), name, "_", folder):
+            app.installTranslator(translator)
+            app._translators.append(translator)
 
 
 def _log_uncaught_exceptions():

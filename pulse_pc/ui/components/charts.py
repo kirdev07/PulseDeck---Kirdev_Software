@@ -8,12 +8,14 @@ from PySide6.QtWidgets import QSizePolicy, QWidget
 
 from pulse_pc.ui.theme import tokens
 
-STYLES = (
-    (tokens.ACCENT, Qt.PenStyle.SolidLine, 2.2),
-    (tokens.TEXT_2, Qt.PenStyle.SolidLine, 1.4),
-    (tokens.TEXT_3, Qt.PenStyle.DashLine, 1.3),
-    (tokens.TEXT_3, Qt.PenStyle.DotLine, 1.3),
-)
+def _styles():
+    """Read at paint time, so the chart always follows the current palette."""
+    return (
+        (tokens.ACCENT, Qt.PenStyle.SolidLine, 2.2),
+        (tokens.TEXT_2, Qt.PenStyle.SolidLine, 1.4),
+        (tokens.TEXT_3, Qt.PenStyle.DashLine, 1.3),
+        (tokens.TEXT_3, Qt.PenStyle.DotLine, 1.3),
+    )
 
 
 class LoadChart(QWidget):
@@ -29,7 +31,8 @@ class LoadChart(QWidget):
 
     @staticmethod
     def style(index):
-        return STYLES[index % len(STYLES)]
+        styles = _styles()
+        return styles[index % len(styles)]
 
     def set_window(self, seconds):
         self.window = seconds

@@ -9,16 +9,14 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QW
 
 from modules.bot_preferences import load_preferences, save_preferences, validate_preferences, FAVORITE_ACTIONS
 
-OPTIONS_STYLE = """
-QTabWidget::pane { border: 1px solid #253349; }
-QTabBar::tab { background: #16202C; padding: 10px; }
-QTabBar::tab:selected { background: #1F4E85; }
-QListWidget { background: #0D1319; border: 1px solid #253349; border-radius: 8px; }
-QListWidget::item { padding: 7px; }
-QListWidget::item:selected { background: #12263D; }
-QListWidget::indicator { width: 16px; height: 16px; border: 1px solid #4C6A90; border-radius: 4px; background: #0D1319; }
-QListWidget::indicator:checked { background: #2A8CFF; border-color: #2A8CFF; }
-QSpinBox { background: #16202C; padding: 6px; border-radius: 6px; }
+def options_style():
+    """Only what differs from the program's stylesheet, in the current Material 3 palette
+    (the dialog used to carry its own blue colours)."""
+    from pulse_pc.ui.theme import tokens as t
+    return f"""
+QTabWidget::pane {{ border: none; }}
+QListWidget {{ background: {t.SURFACE}; border: none; border-radius: {t.RADIUS_MD}px; padding: 4px; }}
+QListWidget::item {{ padding: 8px; }}
 """
 
 
@@ -26,7 +24,7 @@ class BotOptionsDialog(QDialog):
     def __init__(self, programs, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Возможности Telegram-бота")
-        self.setStyleSheet((parent.styleSheet() if parent else "") + OPTIONS_STYLE)
+        self.setStyleSheet((parent.styleSheet() if parent else "") + options_style())
         self.resize(710, 680)
         self.setMinimumSize(580, 580)
         self.options = load_preferences()

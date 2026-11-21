@@ -6,6 +6,22 @@ text/icon button. Cards have no border: they stand out by tone, as in Material 3
 from pulse_pc.ui.theme import tokens as t
 
 
+def _asset(name, body, color):
+    """A tiny SVG for a stylesheet image (check mark, arrows) in the palette's colour.
+    Qt stylesheets take images only by file path: written once per colour to %TEMP%."""
+    import os
+    import tempfile
+    folder = os.path.join(tempfile.gettempdir(), "PulseDeck-ui")
+    path = os.path.join(folder, f"{name}-{color.lstrip('#')}.svg")
+    if not os.path.exists(path):
+        os.makedirs(folder, exist_ok=True)
+        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="{color}" '
+               f'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">{body}</svg>')
+        with open(path, "w", encoding="utf-8") as stream:
+            stream.write(svg)
+    return path.replace("\\", "/")
+
+
 def _rgba(color, alpha):
     """Qt reads #AARRGGBB, not #RRGGBBAA: transparency goes through rgba()."""
     c = color.lstrip("#")
@@ -13,6 +29,9 @@ def _rgba(color, alpha):
 
 
 def stylesheet():
+    check = _asset("check", '<path d="m5 12.5 4.5 4.5L19 7.5"/>', t.ON_ACCENT)
+    up = _asset("up", '<path d="m7 14.5 5-5 5 5"/>', t.TEXT_2)
+    down = _asset("down", '<path d="m7 9.5 5 5 5-5"/>', t.TEXT_2)
     return f"""
 * {{ font-family: {t.FONT_FAMILY}; font-size: {t.FS_BODY}pt; color: {t.TEXT}; }}
 QWidget {{ background: transparent; }}
@@ -82,7 +101,21 @@ QLineEdit#search:focus {{ border: 2px solid {t.ACCENT}; padding: 6px 14px; }}
 QPlainTextEdit#log {{ font-family: {t.FONT_MONO}; font-size: {t.FS_SMALL}pt; color: {t.TEXT_2}; background: {t.SURFACE_LOW};
                       border-radius: {t.RADIUS_MD}px; padding: 8px; }}
 QSpinBox QLineEdit, QComboBox QLineEdit {{ padding: 0; border: none; background: transparent; }}
-QComboBox::drop-down {{ border: none; width: 24px; }}
+QSpinBox {{ padding-right: 28px; }}
+QSpinBox::up-button, QSpinBox::down-button {{ subcontrol-origin: border; width: 26px; border: none; background: transparent; }}
+QSpinBox::up-button {{ subcontrol-position: top right; }}
+QSpinBox::down-button {{ subcontrol-position: bottom right; }}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover {{ background: {t.SURFACE_HOVER}; border-radius: 6px; }}
+QSpinBox::up-arrow {{ image: url({up}); width: 12px; height: 12px; }}
+QSpinBox::down-arrow {{ image: url({down}); width: 12px; height: 12px; }}
+QComboBox {{ padding-right: 30px; }}
+QComboBox::drop-down {{ subcontrol-origin: padding; subcontrol-position: center right; border: none; width: 30px; }}
+QComboBox::down-arrow {{ image: url({down}); width: 14px; height: 14px; }}
+QDialog QLineEdit, QDialog QSpinBox, QDialog QComboBox, QDialog QPlainTextEdit, QDialog QTextEdit,
+QMessageBox QLineEdit {{ background: {t.SURFACE_3}; }}
+QDialog QListWidget {{ background: {t.SURFACE}; }}
+QSpinBox:focus {{ padding-right: 27px; }}
+QComboBox:focus {{ padding-right: 29px; }}
 QComboBox QAbstractItemView {{ background: {t.SURFACE_2}; border: none; border-radius: 8px; padding: 4px;
                                selection-background-color: {t.SECONDARY_CONTAINER}; selection-color: {t.ON_SECONDARY_CONTAINER}; }}
 
@@ -116,7 +149,9 @@ QMenu::item {{ padding: 8px 20px; border-radius: 6px; }}
 QMenu::item:selected {{ background: {t.SURFACE_HOVER}; }}
 QCheckBox {{ spacing: 10px; }}
 QCheckBox::indicator {{ width: 18px; height: 18px; border: 2px solid {t.TEXT_2}; border-radius: 3px; background: transparent; }}
-QCheckBox::indicator:checked {{ background: {t.ACCENT}; border-color: {t.ACCENT}; }}
+QCheckBox::indicator:checked {{ background: {t.ACCENT}; border-color: {t.ACCENT}; image: url({check}); }}
+QListView::indicator, QListWidget::indicator {{ width: 18px; height: 18px; border: 2px solid {t.TEXT_2}; border-radius: 3px; }}
+QListView::indicator:checked, QListWidget::indicator:checked {{ background: {t.ACCENT}; border-color: {t.ACCENT}; image: url({check}); }}
 QTabBar::tab {{ background: transparent; color: {t.TEXT_2}; padding: 9px 16px; border: none; border-radius: 16px; font-weight: 600; }}
 QTabBar::tab:selected {{ background: {t.SECONDARY_CONTAINER}; color: {t.ON_SECONDARY_CONTAINER}; }}
 QTabBar::tab:hover:!selected {{ background: {t.SURFACE_HOVER}; color: {t.TEXT}; }}
