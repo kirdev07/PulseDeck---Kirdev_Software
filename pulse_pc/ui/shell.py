@@ -168,9 +168,19 @@ class MainWindow(QMainWindow):
         QApplication.instance().quit()
 
     # ----- frameless window: rounded corners, border, resize edges -----
+    def _metrics_visible(self):
+        metrics = getattr(self.context, "metrics", None)
+        if metrics is not None and hasattr(metrics, "set_visible"):
+            metrics.set_visible(self.isVisible() and not self.isMinimized())
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self._metrics_visible()          # in the tray: sample less often
+
     def showEvent(self, event):
         super().showEvent(event)
         round_corners(self)
+        self._metrics_visible()
         if self.mica:
             apply_mica(self, tokens.DARK)
 
@@ -186,6 +196,7 @@ class MainWindow(QMainWindow):
     def changeEvent(self, event):
         if event.type() == QEvent.Type.WindowStateChange:
             self.titlebar.sync_state()
+            self._metrics_visible()
             margin = 0 if self.isMaximized() else EDGE
             self.root.layout().setContentsMargins(margin, margin, margin, margin)
         super().changeEvent(event)

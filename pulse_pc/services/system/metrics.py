@@ -50,6 +50,7 @@ class Snapshot:
     processes: Optional[int] = None
     battery: Optional[float] = None
     plugged: Optional[bool] = None
+    period: float = 1.0                 # seconds this sample stands for (3 while the window is hidden)
 
     @property
     def ram(self):
@@ -290,13 +291,30 @@ if QObject is not None:
 
         updated = Signal(object)
 
+        HIDDEN_INTERVAL = 3.0        # the window is in the tray or minimized: nobody looks at the numbers
+
         def __init__(self, interval=1.0, sampler_factory=MetricsSampler, parent=None):
             super().__init__(parent)
             self.interval = interval
             self.sampler_factory = sampler_factory
             self.latest = None
+            self.visible = True
             self._stop = threading.Event()
+            self._wake = threading.Event()
             self._thread = None
+
+        @property
+        def period(self):
+            """Seconds between samples now (the dashboard repeats a slow sample so its chart keeps time)."""
+            return self.interval if self.visible else max(self.interval, self.HIDDEN_INTERVAL)
+
+        def set_visible(self, visible):
+            """The window is on screen (sample every second) or hidden (every 3 s, less CPU)."""
+            if visible == self.visible:
+                return
+            self.visible = visible
+            if visible:
+                self._wake.set()             # fresh numbers at once when the window comes back
 
         def start(self):
             if self._thread and self._thread.is_alive():
@@ -307,6 +325,7 @@ if QObject is not None:
 
         def stop(self, timeout=2.0):
             self._stop.set()
+            self._wake.set()
             if self._thread:
                 self._thread.join(timeout)
 
@@ -315,11 +334,14 @@ if QObject is not None:
             sampler = self.sampler_factory()
             try:
                 while not self._stop.is_set():
+                    period = self.period
                     try:
                         self.latest = sampler.sample()
+                        self.latest.period = period
                         self.updated.emit(self.latest)
                     except Exception:  # noqa: BLE001 - keep sampling after a transient failure
                         logger.exception("Metrics sample failed")
-                    self._stop.wait(self.interval)
+                    self._wake.wait(period)
+                    self._wake.clear()
             finally:
                 sampler.close()

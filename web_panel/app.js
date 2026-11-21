@@ -62,7 +62,7 @@ const DEFAULTS = {
   alerts: true, notify: false, push: false, alertOffline: true,
   nowPlaying: true, coverColors: true, coverBackdrop: false, gestures: true, showActivity: true,
   limits: { cpu: 90, gpu: 90, ram: 90, vram: 95, disk: 10, battery: 20 },
-  burnIn: true, offlineClock: true,
+  burnIn: true, offlineClock: true, fps: 'smooth',
 };
 const CLOCK_COLORS = {          // «ink» = the theme's text colour (no override)
   accent: 'var(--accent)', white: '#ffffff', blue: '#7aa7ff', green: '#5fd99a', purple: '#b896ff',
@@ -723,7 +723,7 @@ function tickProgress() {
 // Play: the wave grows in 0.8 s (emphasized decelerate, 60 ms delay); pause: flattens in 0.55 s. -----
 const WAVE_LENGTH = 20, WAVE_HEIGHT = 1.9, WAVE_SPEED = 8, WAVE_STROKE = 2.5;   // px, px, px per second, px
 const WAVE_TAPER = 1.5;                                                         // wavelengths
-const seekWave = { height: 0, phase: 0, raf: 0, last: 0, anim: null, playing: false };
+const seekWave = { height: 0, phase: 0, raf: 0, last: 0, drawn: 0, anim: null, playing: false };
 function seekFraction() {
   const s = state.media, seek = $('seek');
   if (state.seeking || !s || !(s.duration > 0)) return Number(seek.max) > 0 ? Number(seek.value) / Number(seek.max) : 0;
@@ -747,6 +747,8 @@ function startSeekWave() {
 }
 function drawSeekWave(now) {
   seekWave.raf = 0;
+  if (seekWave.drawn && now - seekWave.drawn < frameGap()) { startSeekWave(); return; }
+  seekWave.drawn = now;
   const canvas = $('seekwave');
   const width = canvas.clientWidth, height = canvas.clientHeight;
   if (!prefs.waveSeek || document.hidden || !width) { seekWave.last = 0; return; }
@@ -822,6 +824,12 @@ function send(action, value) {
   if (state.ws && state.ws.readyState === WebSocket.OPEN) {
     state.ws.send(JSON.stringify(value === undefined ? { type: 'command', action } : { type: 'command', action, value }));
   }
+}
+
+// ----- «Частота кадров» (Настройки → Экран): animations draw on the display's frames, but at most
+// 30 («Экономно») or 60 («Плавно») times a second; «Максимум» = every frame (90/120 Hz screens). -----
+function frameGap() {
+  return prefs.fps === 'eco' ? 30 : prefs.fps === 'max' ? 0 : 15;      // ms, with slack for vsync jitter
 }
 
 // ----- idle animation (nothing plays). «Волна» is KiroX Motion of the panel; the others are
@@ -1240,7 +1248,7 @@ function startIdle() {
   let last = 0;
   function frame(now) {
     const kind = prefs.idle;
-    if (!canvas.hidden && !document.hidden && IDLE[kind] && now - last > 33) {     // ~30 fps, as the panel
+    if (!canvas.hidden && !document.hidden && IDLE[kind] && now - last >= frameGap()) {
       last = now;
       const ratio = window.devicePixelRatio || 1;
       const [width, height] = idleBox(kind);
@@ -1728,6 +1736,8 @@ function settingsSections(page) {
   ];
   if (page === 'screen') return [
     $('field-awake'),
+    pref('Частота кадров', chips('fps', [['eco', 'Экономно · 30'], ['smooth', 'Плавно · 60'], ['max', 'Максимум']])),
+    note('Как часто перерисовываются анимации. Реже — меньше расход батареи телефона. «Максимум» — каждый кадр экрана (90/120 Гц).'),
     toggle('burnIn', 'Защита от выгорания (AMOLED)'),
     toggle('offlineClock', 'Без связи — только часы'),
   ];

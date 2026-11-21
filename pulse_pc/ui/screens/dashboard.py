@@ -238,7 +238,9 @@ class DashboardScreen(QWidget):
             self.disk.set_value(disk.percent, f"{format_bytes(disk.total - disk.used)} свободно")
         else:
             self.disk.set_value(None)
-        self.chart.append({"CPU": snap.cpu, "RAM": snap.ram, "GPU": snap.gpu})
+        # A sample taken while the window was hidden stands for a few seconds: the chart keeps time.
+        for _ in range(max(1, round(getattr(snap, "period", 1.0)))):
+            self.chart.append({"CPU": snap.cpu, "RAM": snap.ram, "GPU": snap.gpu})
         rows = self.system_rows
         rows["uptime"].setText(format_uptime(snap.uptime))
         rows["processes"].setText(str(snap.processes) if snap.processes is not None else UNAVAILABLE)
