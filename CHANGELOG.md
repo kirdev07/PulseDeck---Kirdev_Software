@@ -8,9 +8,7 @@
 [PulseDesk](https://github.com/kirdev07/PulseDeck-Mobile--KirDev-Software) и
 [PulseDeck Panel](https://github.com/kirdev07/PulseDeck-Panel_Kirdev-Software).
 
-## [Не выпущено]
-
-Готовится к версии 1.0.3.
+## [1.0.3] — 2026-11-21
 
 ### Добавлено
 - **Новый дизайн программы в стиле Material 3**: боковая панель с выделением «таблеткой» и
@@ -105,7 +103,7 @@
   автообновление из GitHub Releases.
 - Политика конфиденциальности, условия использования, сторонние лицензии.
 
-[Не выпущено]: https://github.com/kirdev07/PulseDeck---Kirdev_Software/compare/v1.0.2...main
+[1.0.3]: https://github.com/kirdev07/PulseDeck---Kirdev_Software/compare/v1.0.2...v1.0.3
 [1.0.2]: https://github.com/kirdev07/PulseDeck---Kirdev_Software/compare/v1.0.1...v1.0.2
 [1.0.1]: https://github.com/kirdev07/PulseDeck---Kirdev_Software/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/kirdev07/PulseDeck---Kirdev_Software/releases/tag/v1.0.0
