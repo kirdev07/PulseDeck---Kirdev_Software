@@ -485,7 +485,10 @@ def make_app(features_getter=lambda: None, version=0, pairing=None, browser=Fals
         path = Path(raw)
         if not path.is_absolute():
             raise ValueError("Нужен полный путь.")
-        path = path.resolve(strict=must_exist)
+        try:
+            path = path.resolve(strict=must_exist)
+        except FileNotFoundError:
+            raise ValueError("Файл или папка не найдены. Обновите список.")
         if path.parent == path:
             raise ValueError("С корнем диска так нельзя.")
         return path
@@ -524,6 +527,46 @@ def make_app(features_getter=lambda: None, version=0, pairing=None, browser=Fals
         path = target_path(data.get("path"))
         await asyncio.to_thread(to_recycle_bin, path)      # never a permanent delete from the phone
         return web.json_response({"ok": True, "message": f"В корзине: {path.name}"})
+
+    def file_info(path):
+        from datetime import datetime
+        stat = path.stat()
+        when = lambda t: datetime.fromtimestamp(t).strftime("%d.%m.%Y %H:%M")
+        info = {"ok": True, "name": path.name, "path": str(path), "dir": path.is_dir(),
+                "size": 0 if path.is_dir() else stat.st_size,
+                "modified": when(stat.st_mtime), "created": when(getattr(stat, "st_birthtime", stat.st_ctime))}
+        if path.is_dir():
+            count = 0
+            try:
+                with os.scandir(path) as scan:
+                    for _ in scan:
+                        count += 1
+                        if count >= 10000:
+                            break
+            except OSError:
+                count = -1
+            info["items"] = count
+        return info
+
+    @routes.get("/api/files/info")
+    async def files_info(request):
+        path = target_path(request.query.get("path", ""))
+        return web.json_response(await asyncio.to_thread(file_info, path))
+
+    @routes.post("/api/files/open")
+    async def files_open(request):
+        # Opens with the program Windows has for it, on the PC's screen (the phone asks first for programs).
+        data = await request.json()
+        path = target_path(data.get("path"))
+        await asyncio.to_thread(os.startfile, str(path))
+        return web.json_response({"ok": True, "message": f"Открыто на ПК: {path.name}"})
+
+    @routes.post("/api/files/reveal")
+    async def files_reveal(request):
+        data = await request.json()
+        path = target_path(data.get("path"))
+        subprocess.Popen(["explorer", f"/select,{path}"])
+        return web.json_response({"ok": True, "message": f"Показано в папке: {path.name}"})
 
     # ---- Processes ----
     @routes.get("/api/processes")

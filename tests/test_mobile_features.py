@@ -92,6 +92,34 @@ class FileOperationTests(AioHTTPTestCase):
         self.assertEqual(response.status, 200)
         recycle.assert_called_once_with(target.resolve())
 
+    async def test_info_has_real_fields(self):
+        target = self.root / "note.txt"
+        target.write_text("hello")
+        response = await self.client.get("/api/files/info", params={"path": str(target)}, headers=AUTH)
+        self.assertEqual(response.status, 200)
+        data = await response.json()
+        self.assertEqual((data["name"], data["size"], data["dir"]), ("note.txt", 5, False))
+        self.assertRegex(data["modified"], r"^\d\d\.\d\d\.\d{4} \d\d:\d\d$")
+        folder = await self.client.get("/api/files/info", params={"path": str(self.root)}, headers=AUTH)
+        self.assertEqual((await folder.json())["items"], 1)
+
+    async def test_open_and_reveal_go_to_windows(self):
+        target = self.root / "photo.jpg"
+        target.write_bytes(b"x")
+        with patch("modules.local_api.os.startfile", create=True) as start:
+            response = await self.post("/api/files/open", {"path": str(target)})
+        self.assertEqual(response.status, 200)
+        start.assert_called_once_with(str(target.resolve()))
+        with patch("modules.local_api.subprocess.Popen") as popen:
+            response = await self.post("/api/files/reveal", {"path": str(target)})
+        self.assertEqual(response.status, 200)
+        popen.assert_called_once_with(["explorer", f"/select,{target.resolve()}"])
+
+    async def test_open_needs_an_existing_absolute_path(self):
+        for path in ("relative\\x.txt", str(self.root / "missing.txt")):
+            response = await self.post("/api/files/open", {"path": path})
+            self.assertEqual(response.status, 400, path)
+
 
 class ProcessTests(unittest.TestCase):
     def test_list_has_real_fields(self):
