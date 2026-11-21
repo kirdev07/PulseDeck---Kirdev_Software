@@ -133,6 +133,7 @@ class MainWindow(QMainWindow):
         self.titlebar.navigate.connect(self.open)
         main.addWidget(self.titlebar)
         self.stack = FadeStack(animate=animate)
+        self._intro = animate            # the window fades in once, at start
         main.addWidget(self.stack, 1)
         outer.addLayout(main, 1)
         self.setCentralWidget(root)
@@ -180,6 +181,17 @@ class MainWindow(QMainWindow):
     def showEvent(self, event):
         super().showEvent(event)
         round_corners(self)
+        if self._intro and not event.spontaneous():
+            # Launch animation: the window fades in (0.22 s) instead of popping up.
+            self._intro = False
+            from PySide6.QtCore import QEasingCurve, QPropertyAnimation
+            self.setWindowOpacity(0.0)
+            self._fade_in = QPropertyAnimation(self, b"windowOpacity", self)
+            self._fade_in.setDuration(tokens.ANIM_NORMAL)
+            self._fade_in.setStartValue(0.0)
+            self._fade_in.setEndValue(1.0)
+            self._fade_in.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self._fade_in.start()
         self._metrics_visible()
         if self.mica:
             apply_mica(self, tokens.DARK)
