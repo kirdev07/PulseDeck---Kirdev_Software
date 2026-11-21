@@ -20,12 +20,34 @@ from pulse_pc.ui.theme import icon, icons, stylesheet, tokens  # noqa: E402
 
 
 class ThemeTests(unittest.TestCase):
-    def test_palette_is_monochrome(self):
-        for name in dir(tokens):
-            value = getattr(tokens, name)
-            if isinstance(value, str) and value.startswith("#") and len(value) == 7:
-                r, g, b = (int(value[i:i + 2], 16) for i in (1, 3, 5))
-                self.assertTrue(r == g == b, f"{name}={value} is not grey")
+    def tearDown(self):
+        tokens.apply(tokens.read_appearance())        # back to the palette of this run
+
+    def test_black_and_white_style_is_monochrome(self):
+        for mode in ("dark", "light"):
+            tokens.apply(dict(tokens.DEFAULTS, style="mono", mode=mode))
+            for name in dir(tokens):
+                value = getattr(tokens, name)
+                if name.isupper() and isinstance(value, str) and value.startswith("#") and len(value) == 7 \
+                        and name != "SEEDS":
+                    r, g, b = (int(value[i:i + 2], 16) for i in (1, 3, 5))
+                    self.assertTrue(r == g == b, f"{mode}: {name}={value} is not grey")
+
+    def test_color_style_follows_the_accent(self):
+        tokens.apply(dict(tokens.DEFAULTS, accent="blue", mode="dark"))
+        self.assertEqual(tokens.ACCENT, "#9ECAFF")
+        tokens.apply(dict(tokens.DEFAULTS, accent="purple", mode="light"))
+        self.assertEqual((tokens.ACCENT, tokens.BG), ("#6750A4", "#FEF7FF"))
+        tokens.apply(dict(tokens.DEFAULTS, amoled=True))
+        self.assertEqual(tokens.BG, "#000000")
+
+    def test_bad_settings_fall_back_to_defaults(self):
+        import json
+        import tempfile
+        path = Path(tempfile.mkdtemp()) / "app_settings.json"
+        path.write_text(json.dumps({"style": "rainbow", "accent": "blue", "amoled": "yes"}), encoding="utf-8")
+        found = tokens.read_appearance(path)
+        self.assertEqual((found["style"], found["accent"], found["amoled"]), ("color", "blue", False))
 
     def test_stylesheet_builds_without_placeholders(self):
         css = stylesheet()

@@ -1,5 +1,5 @@
-"""Multi-series load chart. Series are told apart by brightness and dash pattern, so the
-chart stays readable in a strictly monochrome theme."""
+"""Multi-series load chart. The first series is the accent; the others are told apart by
+brightness and dash pattern, so the chart stays readable in the black-and-white style too."""
 from collections import deque
 
 from PySide6.QtCore import QPointF, QRectF, Qt
@@ -9,10 +9,10 @@ from PySide6.QtWidgets import QSizePolicy, QWidget
 from pulse_pc.ui.theme import tokens
 
 STYLES = (
-    (tokens.TEXT, Qt.PenStyle.SolidLine, 1.6),
-    ("#8C8C8C", Qt.PenStyle.SolidLine, 1.4),
-    ("#8C8C8C", Qt.PenStyle.DashLine, 1.3),
-    ("#5A5A5A", Qt.PenStyle.DotLine, 1.3),
+    (tokens.ACCENT, Qt.PenStyle.SolidLine, 2.2),
+    (tokens.TEXT_2, Qt.PenStyle.SolidLine, 1.4),
+    (tokens.TEXT_3, Qt.PenStyle.DashLine, 1.3),
+    (tokens.TEXT_3, Qt.PenStyle.DotLine, 1.3),
 )
 
 

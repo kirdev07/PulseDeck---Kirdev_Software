@@ -46,6 +46,9 @@ _PATHS = {
                   '<path d="m7 21-3-3 3-3"/><path d="M11.5 10.5 13 9.5v5"/>',
     "volume": '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
     "plus": '<path d="M12 5v14M5 12h14"/>',
+    "palette": '<path d="M12 3a9 9 0 1 0 0 18c1 0 1.6-.8 1.6-1.6 0-1.2-1-1.4-1-2.4s.8-1.5 2-1.5H17a4 4 0 0 0 4-4'
+               'c0-4.6-4-8.5-9-8.5z"/><circle cx="7.5" cy="11" r=".9"/><circle cx="10" cy="7.3" r=".9"/>'
+               '<circle cx="14.5" cy="7.3" r=".9"/>',
     "check": '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
     "chevron": '<path d="m9.5 6 6 6-6 6"/>',
     "external": '<path d="M14 4h6v6"/><path d="M20 4 11 13"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>',
@@ -99,30 +102,47 @@ class _SvgEngine(QIconEngine):
         return _SvgEngine(self.name, self.color, self.disabled)
 
 
-def icon(name, color=tokens.TEXT_2):
-    return QIcon(_SvgEngine(name, color, tokens.TEXT_DISABLED))
+def icon(name, color=None):
+    """color: a token value; by default the secondary text colour of the current palette."""
+    return QIcon(_SvgEngine(name, color or tokens.TEXT_2, tokens.TEXT_DISABLED))
 
 
-def pixmap(name, size, color=tokens.TEXT_2, ratio=1.0):
+def pixmap(name, size, color=None, ratio=1.0):
     return icon(name, color).pixmap(QSize(size, size), ratio)
 
 
-# The PulseDeck logo, the same mark as the PulseDesk and PulseDeck Panel launcher icons:
-# white pulse line on an AMOLED-black rounded square (108 × 108, as Android's adaptive icon).
-# image/icon.ico and image/logo.png are rendered from it by packaging/make_icons.py.
-LOGO_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">'
-            '<rect x="1" y="1" width="106" height="106" rx="24" fill="#000" stroke="#2C2C2C" stroke-width="2"/>'
-            '<path d="M24,54h12.5l8.5,-21 11.5,42 8.5,-21h19" fill="none" stroke="#FFF" stroke-width="6" '
-            'stroke-linecap="round" stroke-linejoin="round"/></svg>')
+# The PulseDeck logo «ПК и телефон»: a monitor with a pulse line and a phone beside it, in a
+# round container (48 × 48). The brand colours are the purple Material 3 scheme; inside the
+# program the mark follows the chosen palette. Small sizes (≤ 24 px: tray, taskbar) drop the
+# pulse line and thicken the strokes so the shape stays clear.
+# image/icon.ico, image/logo.png and the web panel's icons come from it (packaging/make_icons.py).
+BRAND = {"container": "#4F378B", "ink": "#EADDFF", "accent": "#D0BCFF"}
 
 
-def logo_pixmap(size, ratio=1.0):
+def logo_svg(container=BRAND["container"], ink=BRAND["ink"], accent=BRAND["accent"], small=False):
+    stroke = 3.8 if small else 3
+    pulse = "" if small else (f'<path d="M12 22h4l2-4 3 8 2-4h3" fill="none" stroke="{ink}" stroke-width="2.6" '
+                              'stroke-linecap="round" stroke-linejoin="round"/>')
+    return ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">'
+            f'<rect width="48" height="48" rx="24" fill="{container}"/>'
+            f'<rect x="8" y="12" width="26" height="18" rx="4" fill="none" stroke="{ink}" stroke-width="{stroke}"/>'
+            f'<path d="M16 35h10" stroke="{ink}" stroke-width="{stroke}" stroke-linecap="round"/>'
+            f'<rect x="29" y="19" width="12" height="20" rx="3.5" fill="{accent}"/>{pulse}</svg>')
+
+
+LOGO_SVG = logo_svg()
+
+
+def logo_pixmap(size, ratio=1.0, themed=False):
+    """themed: in the colours of the current palette (sidebar, «О PulseDeck»), else the brand ones."""
     side = round(size * ratio)
     image = QPixmap(side, side)
     image.fill(Qt.GlobalColor.transparent)
     painter = QPainter(image)
     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-    QSvgRenderer(QByteArray(LOGO_SVG.encode())).render(painter, QRectF(0, 0, side, side))
+    colors = (tokens.PRIMARY_CONTAINER, tokens.ON_PRIMARY_CONTAINER, tokens.ACCENT) if themed else ()
+    svg = logo_svg(*colors, small=size <= 24)
+    QSvgRenderer(QByteArray(svg.encode())).render(painter, QRectF(0, 0, side, side))
     painter.end()
     image.setDevicePixelRatio(ratio)
     return image

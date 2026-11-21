@@ -32,7 +32,10 @@ def button(text, callback=None, kind="", symbol=None, tooltip=""):
         widget.setProperty("kind", kind)
     widget.setCursor(Qt.CursorShape.PointingHandCursor)
     if symbol:
-        widget.setIcon(icon(symbol, tokens.ON_ACCENT if kind == "primary" else tokens.TEXT_2))
+        # The icon takes the text colour of its button variant (Material 3).
+        ink = {"primary": tokens.ON_ACCENT, "ghost": tokens.TEXT_2, "outlined": tokens.ACCENT,
+               "window": tokens.TEXT_2, "nav": tokens.TEXT_2}.get(kind, tokens.ON_SECONDARY_CONTAINER)
+        widget.setIcon(icon(symbol, ink))
         widget.setIconSize(QSize(16, 16))
     if tooltip:
         widget.setToolTip(tooltip)
@@ -88,9 +91,11 @@ class PageHeader(QWidget):
         row = QHBoxLayout(self)
         row.setContentsMargins(0, 0, 0, 0)
         row.setSpacing(tokens.SPACE_3)
-        glyph = QLabel()
-        glyph.setPixmap(icon(symbol, tokens.TEXT).pixmap(QSize(28, 28), self.devicePixelRatioF()))
-        glyph.setFixedSize(32, 32)
+        glyph = QLabel()        # Material 3: the screen icon in a tonal circle
+        glyph.setPixmap(icon(symbol, tokens.ON_SECONDARY_CONTAINER).pixmap(QSize(24, 24), self.devicePixelRatioF()))
+        glyph.setFixedSize(48, 48)
+        glyph.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        glyph.setStyleSheet(f"background: {tokens.SECONDARY_CONTAINER}; border-radius: 24px;")
         row.addWidget(glyph, 0, Qt.AlignmentFlag.AlignTop)
         text = QVBoxLayout()
         text.setSpacing(2)
@@ -114,9 +119,11 @@ class EmptyState(QWidget):
         column.setAlignment(Qt.AlignmentFlag.AlignCenter)
         column.setSpacing(tokens.SPACE_2)
         glyph = QLabel()
-        glyph.setPixmap(icon(symbol, tokens.TEXT_3).pixmap(QSize(40, 40), self.devicePixelRatioF()))
+        glyph.setPixmap(icon(symbol, tokens.ON_SECONDARY_CONTAINER).pixmap(QSize(26, 26), self.devicePixelRatioF()))
         glyph.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        column.addWidget(glyph)
+        glyph.setFixedSize(52, 52)
+        glyph.setStyleSheet(f"background: {tokens.SECONDARY_CONTAINER}; border-radius: 18px;")
+        column.addWidget(glyph, 0, Qt.AlignmentFlag.AlignHCenter)
         heading = label(title, "heading")
         heading.setAlignment(Qt.AlignmentFlag.AlignCenter)
         column.addWidget(heading)

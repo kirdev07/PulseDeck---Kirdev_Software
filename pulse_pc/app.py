@@ -48,6 +48,46 @@ def _log_uncaught_exceptions():
     threading.excepthook = thread_hook
 
 
+RESTART_WAIT = "PULSEDECK_RESTART"     # set for the new process: wait for the old one to let go
+OPEN_PAGE = "PULSEDECK_OPEN"           # the screen to show after a restart
+
+
+def restart_application(open_page=""):
+    """Start PulseDeck again (a new look, for example) and quit this one. The new process waits
+    until this one releases its lock and ports. False when it could not be started."""
+    import os
+    import subprocess
+    if getattr(sys, "frozen", False):
+        command = [sys.executable, *sys.argv[1:]]
+    else:
+        command = list(getattr(sys, "orig_argv", []) or [sys.executable, *sys.argv])
+    command = [part for part in command if part not in ("--minimized", "-m")]   # the window is wanted now
+    env = dict(os.environ, **{RESTART_WAIT: "1", OPEN_PAGE: open_page})
+    try:
+        subprocess.Popen(command, env=env, close_fds=True,
+                         creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP)
+    except OSError:
+        return False
+    app = QApplication.instance()
+    if app is not None:
+        QTimer.singleShot(0, app.quit)
+    return True
+
+
+def _acquire(lock):
+    """The lock; after a restart, wait up to 20 s for the previous process to finish."""
+    import os
+    import time
+    waiting = os.environ.pop(RESTART_WAIT, "") == "1"
+    deadline = time.monotonic() + (20 if waiting else 0)
+    while True:
+        if lock.acquire():
+            return True
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(0.25)
+
+
 def main(argv=None):
     argv = sys.argv if argv is None else argv
     app = create_application(argv)
@@ -67,7 +107,7 @@ def main(argv=None):
 
     config_dir = Path(config.CONFIG_DIR)
     lock = InstanceLock(config_dir)
-    if not lock.acquire():
+    if not _acquire(lock):
         QMessageBox.information(None, APP_NAME, "PulseDeck уже запущен. Откройте его через значок в системном трее.")
         return 0
 
@@ -130,6 +170,10 @@ def main(argv=None):
         lock.release()
     app.aboutToQuit.connect(shutdown)
 
-    if not ({"--minimized", "-m"} & set(argv)) or not tray.available:
+    import os
+    page = os.environ.pop(OPEN_PAGE, "")
+    if page:
+        window.open(page)
+    if not ({"--minimized", "-m"} & set(argv)) or not tray.available or page:
         window.show()
     return app.exec()

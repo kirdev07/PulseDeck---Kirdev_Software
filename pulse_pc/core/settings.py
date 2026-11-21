@@ -31,6 +31,12 @@ class UiSettings:
     animations: bool = True
     telegram_autostart: bool = True     # start the bot with PulseDeck when it is configured
     start_page: str = "dashboard"
+    # «Оформление» (read by ui/theme/tokens.py at start): Material 3 palette.
+    style: str = "color"                # color | mono (black and white)
+    accent: str = "purple"              # purple | blue | green | orange | pink
+    mode: str = "dark"                  # dark | light | system
+    amoled: bool = False                # pure black window in the dark mode
+    background: str = "glow"            # glow | dots | flat
 
 
 class SettingsStore:

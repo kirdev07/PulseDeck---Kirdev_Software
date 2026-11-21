@@ -1,5 +1,5 @@
-"""Main window: frameless AMOLED shell with sidebar, title bar and lazily built screens."""
-from PySide6.QtCore import QEvent, QPoint, Qt
+"""Main window: frameless Material 3 shell with the navigation rail, title bar and lazily built screens."""
+from PySide6.QtCore import QEvent, QPoint, QRectF, Qt
 from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import QHBoxLayout, QMainWindow, QVBoxLayout, QWidget
 
@@ -10,6 +10,51 @@ from pulse_pc.ui.theme import tokens
 from pulse_pc.ui.theme.icons import app_icon
 
 EDGE = 6  # px of the window border that resizes it
+
+
+def round_corners(window):
+    """Windows 11 rounds the corners of a frameless window too when asked (DWM, the same
+    radius as every other window). Windows 10 has no rounded windows: nothing happens."""
+    import ctypes
+    DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND = 33, 2
+    try:
+        preference = ctypes.c_int(DWMWCP_ROUND)
+        ctypes.windll.dwmapi.DwmSetWindowAttribute(ctypes.c_void_p(int(window.winId())), DWMWA_WINDOW_CORNER_PREFERENCE,
+                                                   ctypes.byref(preference), ctypes.sizeof(preference))
+    except (AttributeError, OSError):
+        pass
+
+
+class Backdrop(QWidget):
+    """The window background of «Оформление → Фон»: the surface colour plus a soft light of
+    the accent from two corners («glow»), a fine dot grid («dots») or nothing («flat»).
+    Pages are transparent, cards opaque, so the light shows between the cards."""
+
+    def paintEvent(self, _):
+        from PySide6.QtGui import QRadialGradient
+        painter = QPainter(self)
+        painter.fillRect(self.rect(), QColor(tokens.BG))
+        w, h = self.width(), self.height()
+        if tokens.BACKGROUND == "glow":
+            strength = 0.16 if tokens.DARK else 0.11
+            for cx, cy, radius, alpha in ((w, 0, max(w, h) * 0.62, strength), (0, h, max(w, h) * 0.5, strength * 0.6)):
+                gradient = QRadialGradient(cx, cy, radius)
+                light, clear = QColor(tokens.ACCENT), QColor(tokens.ACCENT)
+                light.setAlphaF(alpha)
+                clear.setAlphaF(0.0)
+                gradient.setColorAt(0, light)
+                gradient.setColorAt(1, clear)
+                painter.fillRect(self.rect(), gradient)
+        elif tokens.BACKGROUND == "dots":
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            dot = QColor(tokens.TEXT_2)
+            dot.setAlphaF(0.16)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(dot)
+            step = 24
+            for x in range(step // 2, w, step):
+                for y in range(step // 2, h, step):
+                    painter.drawEllipse(QPoint(x, y), 1, 1)
 
 
 class MainWindow(QMainWindow):
@@ -30,7 +75,7 @@ class MainWindow(QMainWindow):
         self.setMinimumSize(1040, 660)
         self.resize(1320, 820)
 
-        root = QWidget()
+        root = Backdrop()
         root.setObjectName("root")
         root.setMouseTracking(True)
         root.installEventFilter(self)
@@ -82,14 +127,19 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QApplication
         QApplication.instance().quit()
 
-    # ----- frameless window: border, resize edges -----
+    # ----- frameless window: rounded corners, border, resize edges -----
+    def showEvent(self, event):
+        super().showEvent(event)
+        round_corners(self)
+
     def paintEvent(self, event):
         super().paintEvent(event)
         if self.isMaximized():
             return
         painter = QPainter(self)
-        painter.setPen(QPen(QColor(tokens.BORDER_STRONG), 1))
-        painter.drawRect(self.rect().adjusted(0, 0, -1, -1))
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(QPen(QColor(tokens.BORDER), 1))
+        painter.drawRoundedRect(QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5), 8, 8)
 
     def changeEvent(self, event):
         if event.type() == QEvent.Type.WindowStateChange:

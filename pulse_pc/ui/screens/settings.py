@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6 import __version__ as PYSIDE_VERSION
 from PySide6.QtCore import QObject, Qt, QUrl, Signal
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QIcon
 from PySide6.QtWidgets import (
     QHBoxLayout, QLineEdit, QListWidget, QListWidgetItem, QScrollArea, QStackedWidget, QTableWidget,
     QTableWidgetItem, QTextBrowser, QVBoxLayout, QWidget, QAbstractItemView, QHeaderView,
@@ -26,6 +26,7 @@ ROOT = Path(config.RESOURCE_DIR)   # LICENSE, PRIVACY_POLICY.md … (bundled nex
 REPOSITORY = "https://github.com/kirdev07/PulseDeck---Kirdev_Software"
 SECTIONS = (
     ("general", "Основные", "settings"),
+    ("look", "Оформление", "palette"),
     ("telegram", "Telegram Бот", "telegram"),
     ("phone", "Телефон", "phone"),
     ("web", "Веб-панель", "network"),
@@ -68,6 +69,86 @@ def setting_row(title, description, control):
     return row
 
 
+class Segmented(QWidget):
+    """Material 3 segmented button: one outlined pill split into options; the chosen one is
+    filled with the secondary container and carries a check."""
+
+    def __init__(self, options, current, on_change, parent=None):
+        super().__init__(parent)
+        from PySide6.QtWidgets import QButtonGroup
+        row = QHBoxLayout(self)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        self.group = QButtonGroup(self)
+        self.group.setExclusive(True)
+        self.buttons = {}
+        last = len(options) - 1
+        for index, (value, text) in enumerate(options):
+            choice = button(text)
+            choice.setCheckable(True)
+            left = f"{tokens.RADIUS_PILL}px" if index == 0 else "0"
+            right = f"{tokens.RADIUS_PILL}px" if index == last else "0"
+            choice.setStyleSheet(
+                f"QPushButton {{ background: transparent; color: {tokens.TEXT}; border: 1px solid {tokens.BORDER_STRONG};"
+                f" border-left-width: {1 if index == 0 else 0}px; border-top-left-radius: {left};"
+                f" border-bottom-left-radius: {left}; border-top-right-radius: {right};"
+                f" border-bottom-right-radius: {right}; padding: 8px 16px; }}"
+                f" QPushButton:hover {{ background: {tokens.SURFACE_HOVER}; }}"
+                f" QPushButton:checked {{ background: {tokens.SECONDARY_CONTAINER}; color: {tokens.ON_SECONDARY_CONTAINER}; }}")
+            choice.toggled.connect(lambda on, b=choice: b.setIcon(icon("check", tokens.ON_SECONDARY_CONTAINER) if on
+                                                                  else QIcon()))
+            choice.setChecked(value == current)
+            choice.clicked.connect(lambda _=False, v=value: on_change(v))
+            self.group.addButton(choice)
+            self.buttons[value] = choice
+            row.addWidget(choice)
+
+
+def choice_row(options, current, on_change):
+    return Segmented(options, current, on_change)
+
+
+class Swatch(QWidget):
+    """A round colour choice (40 px); the chosen one has a ring and a check."""
+
+    clicked = Signal()
+
+    def __init__(self, color, name, parent=None):
+        super().__init__(parent)
+        self.color = color
+        self.checked = False
+        self.setFixedSize(48, 48)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setToolTip(name)
+        self.setAccessibleName(name)
+
+    def setChecked(self, on):
+        self.checked = on
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        if self.isEnabled() and event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit()
+
+    def paintEvent(self, _):
+        from PySide6.QtCore import QRectF
+        from PySide6.QtGui import QColor, QPainter, QPen
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        fill = QColor(self.color)
+        if not self.isEnabled():
+            fill.setAlphaF(0.35)
+        if self.checked:
+            painter.setPen(QPen(QColor(tokens.TEXT), 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(QRectF(1, 1, 46, 46))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(fill)
+        painter.drawEllipse(QRectF(5, 5, 38, 38))
+        if self.checked:
+            painter.drawPixmap(12, 12, icon("check", "#FFFFFF").pixmap(24, 24))
+
+
 def document(path, missing):
     view = QTextBrowser()
     view.setOpenExternalLinks(True)
@@ -98,10 +179,11 @@ class SettingsScreen(QWidget):
         self.nav = QListWidget()
         self.nav.setFixedWidth(230)
         self.nav.setStyleSheet("QListWidget { border: none; background: transparent; } "
-                               "QListWidget::item { padding: 9px 10px; }")
+                               "QListWidget::item { padding: 11px 16px; border-radius: 18px; margin: 1px 0; }")
         self.pages = QStackedWidget()
         self.section_index = {}
-        builders = {"general": self._general, "telegram": self._telegram, "phone": self._phone, "web": self._web,
+        builders = {"general": self._general, "look": self._look, "telegram": self._telegram, "phone": self._phone,
+                    "web": self._web,
                     "security": self._security, "privacy": self._privacy, "license": self._license,
                     "terms": self._terms, "updates": self._updates,
                     "support": self._support, "about": self._about}
@@ -144,9 +226,82 @@ class SettingsScreen(QWidget):
         self.general_message = label("", "caption", wrap=True)
         card.body.addWidget(self.general_message)
         layout.addWidget(card)
-        look = Card("Оформление")
-        look.body.addWidget(label("Тема AMOLED Black — единственная тема интерфейса. Язык — русский.", "muted", wrap=True))
-        layout.addWidget(look)
+
+    def _look(self, layout):
+        """Material 3 palette: style, theme, accent, background. Colours are built into every
+        widget when it is created, so «Применить» restarts the window (services keep their
+        settings; the restart takes a few seconds)."""
+        self.look = {key: getattr(self.ui, key) for key in ("style", "accent", "mode", "amoled", "background")}
+        theme = Card("Тема")
+        self.style_choice = choice_row((("color", "Цветной"), ("mono", "Чёрно-белый")), self.look["style"],
+                                       lambda v: self.pick_look("style", v))
+        theme.body.addLayout(setting_row("Стиль", "Чёрно-белый — прежний строгий вид PulseDeck, без цвета акцента.",
+                                         self.style_choice))
+        theme.body.addWidget(divider())
+        self.mode_choice = choice_row((("dark", "Тёмная"), ("light", "Светлая"), ("system", "Как в Windows")),
+                                      self.look["mode"], lambda v: self.pick_look("mode", v))
+        theme.body.addLayout(setting_row("Режим", "«Как в Windows» следует настройке «Режим приложений».", self.mode_choice))
+        theme.body.addWidget(divider())
+        self.amoled = Toggle(self.look["amoled"])
+        self.amoled.toggled.connect(lambda on: self.pick_look("amoled", on))
+        theme.body.addLayout(setting_row("Чёрный фон (AMOLED)", "В тёмном режиме окно чисто чёрное — экономит заряд "
+                                         "OLED-экранов.", self.amoled))
+        layout.addWidget(theme)
+
+        accent = Card("Цвет акцента")
+        accent.body.addWidget(label("Из него строятся все оттенки программы: кнопки, переключатели, графики, "
+                                    "подсветка. В чёрно-белом стиле не используется.", "caption", wrap=True))
+        swatches = QHBoxLayout()
+        swatches.setSpacing(tokens.SPACE_3)
+        self.swatches = {}
+        names = {"purple": "Фиолетовый", "blue": "Голубой", "green": "Зелёный", "orange": "Оранжевый", "pink": "Розовый"}
+        for key in tokens.ACCENTS:
+            swatch = Swatch(tokens.SEEDS[key], names[key])
+            swatch.clicked.connect(lambda _=False, k=key: self.pick_look("accent", k))
+            swatches.addWidget(swatch)
+            self.swatches[key] = swatch
+        swatches.addStretch(1)
+        accent.body.addLayout(swatches)
+        layout.addWidget(accent)
+
+        background = Card("Фон окна")
+        self.background_choice = choice_row((("glow", "Свечение"), ("dots", "Точки"), ("flat", "Ровный")),
+                                            self.look["background"], lambda v: self.pick_look("background", v))
+        background.body.addLayout(setting_row("Фон", "Свечение — мягкий свет цвета акцента из углов окна.",
+                                              self.background_choice))
+        layout.addWidget(background)
+
+        apply_row = QHBoxLayout()
+        self.look_message = label("", "caption", wrap=True)
+        apply_row.addWidget(self.look_message, 1)
+        self.look_apply = button("Применить", self.apply_look, "primary", "check")
+        self.look_apply.setEnabled(False)
+        apply_row.addWidget(self.look_apply)
+        layout.addLayout(apply_row)
+        self._show_look()
+
+    def pick_look(self, key, value):
+        self.look[key] = value
+        self._show_look()
+
+    def _show_look(self):
+        for key, swatch in self.swatches.items():
+            swatch.setChecked(key == self.look["accent"])
+            swatch.setEnabled(self.look["style"] == "color")
+        self.amoled.setEnabled(self.look["mode"] != "light")
+        changed = any(self.look[key] != getattr(self.ui, key) for key in self.look)
+        self.look_apply.setEnabled(changed)
+        self.look_message.setText("Окно PulseDeck перезапустится на пару секунд — бот и сервер для телефонов "
+                                  "запустятся снова сами." if changed else "")
+
+    def apply_look(self):
+        for key, value in self.look.items():
+            setattr(self.ui, key, value)
+        self.ui_store.save(self.ui)
+        from pulse_pc.app import restart_application
+        if not restart_application(open_page="settings"):
+            self.look_message.setText("Сохранено. Новое оформление появится при следующем запуске PulseDeck.")
+            self.look_apply.setEnabled(False)
 
     def _telegram(self, layout):
         card = Card("Подключение бота")
@@ -352,7 +507,7 @@ class SettingsScreen(QWidget):
         card = Card()
         row = QHBoxLayout()
         logo = label()
-        logo.setPixmap(logo_pixmap(56, logo.devicePixelRatioF()))
+        logo.setPixmap(logo_pixmap(56, logo.devicePixelRatioF(), themed=True))
         row.addWidget(logo)
         names = QVBoxLayout()
         names.addWidget(label(APP_NAME, "title"))

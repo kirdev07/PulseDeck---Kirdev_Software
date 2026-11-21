@@ -393,4 +393,11 @@ def _set_avatar(badge, data, size, fallback="telegram"):
 
 
 def build(context):
-    return TelegramScreen(context)
+    # Scrolls when the window is lower than the content (cards keep their natural height).
+    from PySide6.QtWidgets import QFrame, QScrollArea
+    scroll = QScrollArea()
+    scroll.setWidgetResizable(True)
+    scroll.setFrameShape(QFrame.Shape.NoFrame)
+    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+    scroll.setWidget(TelegramScreen(context))
+    return scroll

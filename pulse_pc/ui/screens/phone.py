@@ -271,12 +271,14 @@ class PhoneScreen(QWidget):
         self.devices.setShowGrid(False)
         self.devices.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.devices.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
-        self.devices.verticalHeader().setDefaultSectionSize(44)
+        self.devices.verticalHeader().setDefaultSectionSize(48)
         self.devices.setStyleSheet("QTableWidget { border: none; }")
         head = self.devices.horizontalHeader()
         head.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        for index in (1, 2, 3, 4):
+        for index in (1, 2):
             head.setSectionResizeMode(index, QHeaderView.ResizeMode.ResizeToContents)
+        for index in (3, 4):
+            head.setSectionResizeMode(index, QHeaderView.ResizeMode.Fixed)
         head.setDefaultAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
         card.body.addWidget(self.devices)
         self.devices_empty = EmptyState("phone", "Телефоны не подключены",
@@ -369,13 +371,18 @@ class PhoneScreen(QWidget):
             access.setCurrentIndex(0 if device.get("access", mobile_access.ACCESS_FULL) == mobile_access.ACCESS_FULL else 1)
             access.currentIndexChanged.connect(
                 lambda _=0, d=device, box=access: self.services.local_api.set_access(d["id"], box.currentData()))
+            access.setStyleSheet("padding: 5px 10px;")      # compact inside a table row
             self.devices.setCellWidget(row, 3, access)
             revoke = button("Отозвать", lambda _=False, d=device: self.revoke(d), "ghost")
+            revoke.setStyleSheet("padding: 5px 12px;")
             self.devices.setCellWidget(row, 4, revoke)
+        # Cell widgets do not count for «resize to contents»: give their columns room.
+        self.devices.setColumnWidth(3, 180)
+        self.devices.setColumnWidth(4, 112)
         has = bool(devices)
         self.devices.setVisible(has)
         self.devices_empty.setVisible(not has)
-        self.devices.setFixedHeight(36 + 44 * len(devices))
+        self.devices.setFixedHeight(40 + 48 * len(devices))
         self.devices_count.setText(f"{len(devices)} из {mobile_access.MAX_DEVICES}" if has else "")
 
     def _refresh_times(self):

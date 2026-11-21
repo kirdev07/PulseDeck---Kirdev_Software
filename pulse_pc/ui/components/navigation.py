@@ -1,38 +1,108 @@
 """Window chrome: sidebar navigation, title bar with quick search, animated page stack."""
-from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QSize, Qt, Signal
-from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtCore import QEasingCurve, QPropertyAnimation, QRectF, QSize, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QKeySequence, QPainter, QShortcut
 from PySide6.QtWidgets import (
-    QButtonGroup, QCompleter, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QLineEdit, QPushButton,
+    QAbstractButton, QButtonGroup, QCompleter, QFrame, QGraphicsOpacityEffect, QHBoxLayout, QLabel, QLineEdit,
     QStackedWidget, QVBoxLayout, QWidget,
 )
 
-from pulse_pc import APP_NAME, EDITION, __version__
+from pulse_pc import APP_NAME, __version__
 from pulse_pc.ui.components.basic import button, label
 from pulse_pc.ui.components.indicators import StatusLine
 from pulse_pc.ui.theme import icon, tokens
 from pulse_pc.ui.theme.icons import logo_pixmap
 
 
-class NavItem(QPushButton):
+RAIL_NAMES = {"telegram": "Бот"}     # short labels under the rail icons
+
+
+class NavItem(QAbstractButton):
+    """Navigation rail destination (Material 3): the icon in a 56 × 32 «pill» that lights up
+    with the secondary container when selected, the label below."""
+
     def __init__(self, key, symbol, text):
-        super().__init__(text)
+        super().__init__()
         self.key = key
         self.symbol = symbol
-        self.setProperty("kind", "nav")
+        self.setText(RAIL_NAMES.get(key, text))
+        self.setToolTip(text)
+        self.setAccessibleName(text)
         self.setCheckable(True)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setMinimumHeight(38)
-        self.setIconSize(QSize(18, 18))
-        self.setAccessibleName(text)
-        self._paint_icon(False)
-        self.toggled.connect(self._paint_icon)
+        self.setFixedSize(tokens.SIDEBAR_WIDTH - 8, 60)
+        self._hover = False
 
-    def _paint_icon(self, checked):
-        self.setIcon(icon(self.symbol, tokens.TEXT if checked else tokens.TEXT_2))
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, _):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pill = QRectF((self.width() - 56) / 2, 4, 56, 32)
+        checked = self.isChecked()
+        if checked or self._hover:
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(tokens.SECONDARY_CONTAINER if checked else tokens.SURFACE_HOVER))
+            painter.drawRoundedRect(pill, 16, 16)
+        ink = tokens.ON_SECONDARY_CONTAINER if checked else tokens.TEXT_2
+        side = 24
+        glyph = icon(self.symbol, ink).pixmap(QSize(side, side), self.devicePixelRatioF())
+        painter.drawPixmap(round(pill.center().x() - side / 2), round(pill.center().y() - side / 2), glyph)
+        font = QFont(self.font())
+        font.setPointSizeF(tokens.FS_CAPTION + 0.5)
+        font.setWeight(QFont.Weight.DemiBold if checked else QFont.Weight.Medium)
+        painter.setFont(font)
+        painter.setPen(QColor(tokens.TEXT if checked else tokens.TEXT_2))
+        painter.drawText(QRectF(0, pill.bottom() + 3, self.width(), 18),
+                         Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop, self.text())
+
+
+class Fab(QAbstractButton):
+    """Floating action button of the rail: 56 × 56, primary container, a plus."""
+
+    def __init__(self, tooltip):
+        super().__init__()
+        self.setToolTip(tooltip)
+        self.setAccessibleName(tooltip)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedSize(56, 56)
+        self._hover = False
+
+    def enterEvent(self, event):
+        self._hover = True
+        self.update()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        self._hover = False
+        self.update()
+        super().leaveEvent(event)
+
+    def paintEvent(self, _):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        fill = QColor(tokens.PRIMARY_CONTAINER)
+        if self._hover or self.isDown():
+            over = QColor(tokens.ON_PRIMARY_CONTAINER)
+            amount = 0.12 if self.isDown() else 0.08
+            fill = QColor.fromRgbF(*(a + (b - a) * amount for a, b in zip(fill.getRgbF()[:3], over.getRgbF()[:3])))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(fill)
+        painter.drawRoundedRect(QRectF(self.rect()), 16, 16)
+        glyph = icon("plus", tokens.ON_PRIMARY_CONTAINER).pixmap(QSize(24, 24), self.devicePixelRatioF())
+        painter.drawPixmap(16, 16, glyph)
 
 
 class Sidebar(QFrame):
-    """Brand, one button per screen and a live status line at the bottom."""
+    """Navigation rail (Material 3): logo, the main action, one destination per screen,
+    a live status dot and the version at the bottom."""
 
     navigate = Signal(str)
 
@@ -41,21 +111,19 @@ class Sidebar(QFrame):
         self.setObjectName("sidebar")
         self.setFixedWidth(tokens.SIDEBAR_WIDTH)
         column = QVBoxLayout(self)
-        column.setContentsMargins(tokens.SPACE_3, tokens.SPACE_4, tokens.SPACE_3, tokens.SPACE_4)
-        column.setSpacing(2)
+        column.setContentsMargins(4, tokens.SPACE_4, 4, tokens.SPACE_4)
+        column.setSpacing(4)
+        center = Qt.AlignmentFlag.AlignHCenter
 
-        brand = QHBoxLayout()
-        brand.setContentsMargins(tokens.SPACE_2, 0, 0, tokens.SPACE_5)
-        brand.setSpacing(tokens.SPACE_2)
         logo = QLabel()
-        logo.setPixmap(logo_pixmap(30, self.devicePixelRatioF()))
-        brand.addWidget(logo)
-        names = QVBoxLayout()
-        names.setSpacing(0)
-        names.addWidget(label(APP_NAME.upper(), "brand"))
-        names.addWidget(label(EDITION, "edition"))
-        brand.addLayout(names, 1)
-        column.addLayout(brand)
+        logo.setPixmap(logo_pixmap(44, self.devicePixelRatioF(), themed=True))
+        logo.setToolTip(f"{APP_NAME} {__version__}")
+        column.addWidget(logo, 0, center)
+        column.addSpacing(tokens.SPACE_3)
+        self.fab = Fab("Подключить телефон")
+        self.fab.clicked.connect(lambda: self.navigate.emit("phone"))
+        column.addWidget(self.fab, 0, center)
+        column.addSpacing(tokens.SPACE_4)
 
         self.group = QButtonGroup(self)
         self.group.setExclusive(True)
@@ -65,19 +133,20 @@ class Sidebar(QFrame):
             item.clicked.connect(lambda _=False, key=screen.key: self.navigate.emit(key))
             self.group.addButton(item)
             self.items[screen.key] = item
-            column.addWidget(item)
+            column.addWidget(item, 0, center)
         column.addStretch(1)
 
-        self.status = StatusLine("", "off", "caption")
-        self.status.setContentsMargins(tokens.SPACE_2, 0, 0, 0)
+        self.status = StatusLine("", "off", "rail")
+        self.status.text.hide()         # the rail is narrow: the text is the dot's tooltip
         self.status.hide()  # shown once the service manager reports a real state (stage D)
-        column.addWidget(self.status)
-        version = label(f"{APP_NAME} v{__version__}", "caption")
-        version.setContentsMargins(tokens.SPACE_2, 0, 0, 0)
-        column.addWidget(version)
+        column.addWidget(self.status, 0, center)
+        version = label(f"v{__version__}", "rail")
+        version.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        column.addWidget(version, 0, center)
 
     def set_status(self, text, state):
         self.status.set(text, state)
+        self.status.setToolTip(text)
         self.status.setVisible(bool(text))
 
     def select(self, key):

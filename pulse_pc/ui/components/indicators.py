@@ -101,7 +101,7 @@ class Toggle(QAbstractButton):
         self.toggled.connect(self._animate)
 
     def sizeHint(self):
-        return QSize(36, 20)
+        return QSize(52, 32)
 
     def _animate(self, checked):
         self._anim.stop()
@@ -119,34 +119,50 @@ class Toggle(QAbstractButton):
     offset = Property(float, get_offset, set_offset)
 
     def paintEvent(self, _):
+        # Material 3 switch: 52 × 32 track; off = outlined track with a small grey thumb,
+        # on = accent track with a big thumb. The thumb grows while it moves.
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        track = QRectF(0.5, 0.5, self.width() - 1, self.height() - 1)
-        radius = track.height() / 2
-        on = QColor(tokens.ACCENT)
-        off = QColor(tokens.SURFACE_3)
-        if not self.isEnabled():
-            on = off = QColor(tokens.SURFACE_2)
-        fill = QColor.fromRgbF(*(a + (b - a) * self._offset for a, b in zip(off.getRgbF()[:3], on.getRgbF()[:3])))
-        painter.setPen(QPen(QColor(tokens.BORDER_FOCUS if self.hasFocus() else tokens.BORDER_STRONG), 1))
+        h = min(32.0, self.height() - 1.0)
+        w = min(52.0, self.width() - 1.0)
+        track = QRectF((self.width() - w) / 2, (self.height() - h) / 2, w, h)
+        radius = h / 2
+
+        def blend(a, b):
+            a, b = QColor(a), QColor(b)
+            return QColor.fromRgbF(*(x + (y - x) * self._offset for x, y in zip(a.getRgbF()[:3], b.getRgbF()[:3])))
+
+        if self.isEnabled():
+            fill = blend(tokens.SURFACE_3, tokens.ACCENT)
+            edge = blend(tokens.BORDER_STRONG, tokens.ACCENT)
+            thumb = blend(tokens.BORDER_STRONG, tokens.ON_ACCENT)
+        else:
+            fill, edge, thumb = QColor(tokens.SURFACE_2), QColor(tokens.BORDER), QColor(tokens.TEXT_DISABLED)
+        painter.setPen(QPen(edge, 2))
         painter.setBrush(fill)
-        painter.drawRoundedRect(track, radius, radius)
-        knob = track.height() - 6
-        x = track.left() + 3 + (track.width() - knob - 6) * self._offset
+        painter.drawRoundedRect(track.adjusted(1, 1, -1, -1), radius - 1, radius - 1)
+        if self.hasFocus():
+            painter.setPen(QPen(QColor(tokens.ACCENT), 1.5))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRoundedRect(track.adjusted(-2, -2, 2, 2), radius + 2, radius + 2)
+        knob = h * (0.5 + 0.25 * self._offset)          # 16 → 24 px
+        travel = track.width() - h
+        cx = track.left() + h / 2 + travel * self._offset
+        cy = track.center().y()
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(tokens.ON_ACCENT if self._offset > 0.5 else tokens.TEXT_2)
-                         if self.isEnabled() else QColor(tokens.TEXT_DISABLED))
-        painter.drawEllipse(QRectF(x, track.top() + 3, knob, knob))
+        painter.setBrush(thumb)
+        painter.drawEllipse(QRectF(cx - knob / 2, cy - knob / 2, knob, knob))
 
 
 class Sparkline(QWidget):
     """Line chart of the latest samples. Draws nothing fake: with fewer than two
     real samples it stays empty. `None` samples break the line (gaps)."""
 
-    def __init__(self, capacity=60, maximum=100.0, parent=None):
+    def __init__(self, capacity=60, maximum=100.0, parent=None, color=None):
         super().__init__(parent)
         self.samples = deque(maxlen=capacity)
         self.maximum = maximum
+        self.color = color          # None: the accent of the current palette
         self.setMinimumHeight(28)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
@@ -178,9 +194,13 @@ class Sparkline(QWidget):
                 current.append(QPointF(start + i * step, 1 + h - h * v / top))
         if current:
             segments.append(current)
+        ink = QColor(self.color or tokens.ACCENT)
         gradient = QLinearGradient(0, 0, 0, h)
-        gradient.setColorAt(0, QColor(255, 255, 255, 22))
-        gradient.setColorAt(1, QColor(255, 255, 255, 0))
+        top_fill, bottom_fill = QColor(ink), QColor(ink)
+        top_fill.setAlpha(46)
+        bottom_fill.setAlpha(0)
+        gradient.setColorAt(0, top_fill)
+        gradient.setColorAt(1, bottom_fill)
         for points in segments:
             if len(points) < 2:
                 continue
@@ -191,7 +211,10 @@ class Sparkline(QWidget):
             area.lineTo(points[-1].x(), h + 1)
             area.lineTo(points[0].x(), h + 1)
             painter.fillPath(area, gradient)
-            painter.setPen(QPen(QColor(tokens.TEXT), 1.4))
+            pen = QPen(ink, 1.8)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
             painter.drawPath(line)
 
 
@@ -199,13 +222,16 @@ class StatTile(Card):
     """Metric card: icon + name, big value, detail line, thin bar and sparkline.
     `set_value(None)` shows «Недоступно» instead of a number."""
 
-    def __init__(self, symbol, name, *, unit="%", history=True, parent=None):
-        super().__init__(padding=tokens.SPACE_4, spacing=tokens.SPACE_2, parent=parent)
+    def __init__(self, symbol, name, *, unit="%", history=True, highlight=False, parent=None):
+        """highlight: the main tile of a row, in the primary container (Material 3)."""
+        super().__init__(kind="cardhi" if highlight else "card", padding=tokens.SPACE_5 - 4, spacing=tokens.SPACE_2,
+                         parent=parent)
         self.unit = unit
+        ink = tokens.ON_PRIMARY_CONTAINER if highlight else tokens.TEXT_2
         head = QHBoxLayout()
         head.setSpacing(tokens.SPACE_2)
         glyph = QLabel()
-        glyph.setPixmap(icon(symbol, tokens.TEXT_2).pixmap(QSize(18, 18), self.devicePixelRatioF()))
+        glyph.setPixmap(icon(symbol, ink).pixmap(QSize(18, 18), self.devicePixelRatioF()))
         head.addWidget(glyph)
         self.name = label(name, "overline")
         head.addWidget(self.name)
@@ -222,7 +248,7 @@ class StatTile(Card):
         self.bar.setTextVisible(False)
         self.bar.hide()
         self.body.addWidget(self.bar)
-        self.chart = Sparkline() if history else None
+        self.chart = Sparkline(color=tokens.ON_PRIMARY_CONTAINER if highlight else None) if history else None
         if self.chart:
             self.chart.setFixedHeight(32)
             self.body.addWidget(self.chart)

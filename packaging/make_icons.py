@@ -34,9 +34,10 @@ def main():
     images[-1].save(ROOT / "image" / "icon.ico", sizes=[(s, s) for s in ICO_SIZES], append_images=images[:-1])
     render(512).save(ROOT / "image" / "logo.png")
     # Web panel: tab icon and «На экран Домой» icon for iPhone (180 px, no transparency).
-    from pulse_pc.ui.theme.icons import LOGO_SVG
+    from pulse_pc.ui.theme.icons import BRAND, LOGO_SVG
     (ROOT / "web_panel" / "logo.svg").write_text(LOGO_SVG, encoding="utf-8")
-    icon = Image.new("RGB", (180, 180), "black")
+    # iPhone rounds the icon itself: a square of the logo's container colour, so no corners show.
+    icon = Image.new("RGB", (180, 180), BRAND["container"])
     icon.paste(render(180), (0, 0), render(180))
     icon.save(ROOT / "web_panel" / "icon.png")
     print("image/icon.ico, image/logo.png, web_panel/logo.svg, web_panel/icon.png")
